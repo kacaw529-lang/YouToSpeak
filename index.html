@@ -160,6 +160,17 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;padding:20px;g
 #notice.show{display:block}
 
 /* 關卡列 */
+#modeSeg{display:flex;flex:none;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg{border:none;border-radius:0;padding:8px 12px;font-size:.85rem;font-weight:700;background:var(--card);color:var(--ink-soft)}
+.seg:hover{background:#F0F4F8}
+.seg.on{background:var(--accent);color:#fff}
+.seg.on:hover{background:var(--accent-dark)}
+.w.missed{background:#FBE9EA;color:#B4444A}
+.sent.active{
+  background:#FFFBE8;border-radius:10px;
+  box-shadow:inset 4px 0 0 var(--hl);
+  padding:4px 10px;margin-left:-10px;
+}
 #levelBar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin}
 .chip{
   flex:none;border:1px solid var(--line);border-radius:99px;background:var(--card);
@@ -333,6 +344,10 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
     </div>
 
     <div id="controls">
+      <div id="modeSeg">
+        <button class="seg on" data-m="word">🎯 逐詞挑戰</button>
+        <button class="seg" data-m="shadow">🗣 影子跟讀</button>
+      </div>
       <button id="btnStart" class="primary" disabled>▶ 開始練習</button>
       <button id="btnHear" disabled>🔊 聽這個詞</button>
       <button id="btnSkip" disabled>⏭ 跳過此詞</button>
@@ -412,6 +427,9 @@ const S = {
   mediaStream: null,
   mediaChunks: [],
   mediaUrl: null,   // 錄音 blob URL
+  mode: "word",     // 'word' 逐詞挑戰 | 'shadow' 影子跟讀
+  sentences: [],    // 本關句子清單：{wordStart, wordEnd, el, text}
+  shadow: {sent:0, phase:"idle", attempts:0, timer:null}, // 影子模式回合狀態
 };
 
 const $ = id => document.getElementById(id);
@@ -798,6 +816,8 @@ function setLevel(i){
     word.status="pending"; word.attempts=0; word.fails=0; word.gotHelp=false;
   }
   S.idx = L.wordStart; S.lastFail="";
+  clearShadowTimer();
+  S.shadow = {sent:0, phase:"idle", attempts:0, timer:null};
   render();
   renderLevelBar();
   updateHud();
@@ -847,10 +867,20 @@ function loadProgress(){
 function render(){
   reader.innerHTML="";
   S.words.forEach(w=>{ w.el=null; });
+  S.sentences=[];
   const L = lv();
   S.blocks.slice(L.blockStart, L.blockEnd).forEach(block=>{
     const div=document.createElement("div");
     div.className="sent" + (block.segs.length ? "" : " blank");
+    const wis = block.segs.filter(s=>s.type==="word").map(s=>s.wi);
+    if (wis.length){
+      S.sentences.push({
+        wordStart: wis[0],
+        wordEnd:   wis[wis.length-1]+1,
+        el: div,
+        text: block.segs.map(s=> s.type==="word" ? S.words[s.wi].display : s.text).join(" ")
+      });
+    }
     const en=document.createElement("div");
     en.className="en";
     block.segs.forEach(seg=>{
@@ -890,6 +920,7 @@ function paint(){
     else if (w.status==="done") w.el.classList.add("done");
     else if (w.status==="helped") w.el.classList.add("helped");
     else if (w.status==="skipped") w.el.classList.add("skipped");
+    else if (w.status==="missed") w.el.classList.add("missed");
   });
   const cur=S.words[S.idx];
   if (cur && cur.el) cur.el.scrollIntoView({block:"center", behavior:"smooth"});
@@ -897,6 +928,18 @@ function paint(){
   progressFill.style.width = (span ? ((S.idx-L.wordStart)/span*100) : 0) + "%";
 }
 function jumpTo(i){
+  if (S.mode==="shadow"){
+    const si = shadowSentOf(i);
+    if (S.running){
+      shadowEnterSentence(si);
+    } else {
+      S.shadow.sent = si;
+      S.idx = S.sentences[si] ? S.sentences[si].wordStart : i;
+      S.sentences.forEach(s=>s.el.classList.remove("active"));
+      paint(); updateHud();
+    }
+    return;
+  }
   S.idx=i;
   S.lastFail="";
   const w=S.words[i];
@@ -929,6 +972,7 @@ function buildRecognition(){
   };
   rec.onresult = ev=>{
     let latest="";
+    const consumeFn = (S.mode==="shadow") ? shadowConsume : tryConsume;
     for (let i=ev.resultIndex; i<ev.results.length; i++){
       const res = ev.results[i];
       const transcript = res[0].transcript.trim();
@@ -936,7 +980,7 @@ function buildRecognition(){
       const tokens = transcript.split(/\s+/).filter(Boolean);
       let ptr = S.consumed[i]||0;
       while (ptr < tokens.length && S.idx < lv().wordEnd){
-        const ok = tryConsume(tokens[ptr], res.isFinal);
+        const ok = consumeFn(tokens[ptr], res.isFinal);
         if (ok===1){ ptr++; }               // 比對成功，前進
         else if (ok===0 && res.isFinal){ ptr++; } // 最終結果仍不符 → 記一次錯誤
         else break;                          // 暫時結果不符 → 等它修正，不記錯
@@ -944,7 +988,7 @@ function buildRecognition(){
       S.consumed[i]=ptr;
     }
     if (latest) liveText.textContent = "🎧 " + latest;
-    if (S.idx >= lv().wordEnd) finishSession();
+    if (S.mode!=="shadow" && S.idx >= lv().wordEnd) finishSession();
   };
   return rec;
 }
@@ -1105,9 +1149,153 @@ function speakText(text){
   speechSynthesis.speak(u);
 }
 btnHear.onclick = ()=>{
+  if (S.mode==="shadow"){
+    const sent = S.sentences[Math.min(S.shadow.sent, S.sentences.length-1)];
+    if (!sent) return;
+    if (S.running){
+      // 重聽本句：重置本句進度後重播示範（不計入嘗試次數）
+      for (let w=sent.wordStart; w<sent.wordEnd; w++){
+        if (S.words[w].status!=="pending") S.words[w].status="pending";
+      }
+      S.idx = sent.wordStart;
+      paint();
+      shadowListen(sent);
+    } else {
+      speakText(sent.text);
+    }
+    return;
+  }
   const t = demoTextFor(S.idx);
   if (t) demonstrate(t);
 };
+
+/* ===================== 影子跟讀模式 ===================== */
+function curSent(){ return S.sentences[S.shadow.sent] || null; }
+function shadowSentOf(wordIdx){
+  const i = S.sentences.findIndex(s=> wordIdx>=s.wordStart && wordIdx<s.wordEnd);
+  return i<0 ? 0 : i;
+}
+function clearShadowTimer(){ if (S.shadow.timer){ clearTimeout(S.shadow.timer); S.shadow.timer=null; } }
+function bumpShadowTimer(){
+  clearShadowTimer();
+  S.shadow.timer = setTimeout(()=>{
+    if (S.running && S.mode==="shadow" && S.shadow.phase==="repeat") evaluateSentence();
+  }, 4000); // 停頓 4 秒視為本次嘗試結束
+}
+function shadowEnterSentence(i, keepAttempts){
+  const sent = S.sentences[i];
+  if (!sent){ finishSession(); return; }
+  S.sentences.forEach(s=> s.el.classList.remove("active"));
+  S.shadow.sent = i;
+  if (!keepAttempts) S.shadow.attempts = 0;
+  for (let w=sent.wordStart; w<sent.wordEnd; w++){
+    const word=S.words[w];
+    if (word.status!=="pending"){ word.status="pending"; }
+  }
+  S.idx = sent.wordStart; S.lastFail="";
+  sent.el.classList.add("active");
+  paint(); updateHud();
+  shadowListen(sent);
+}
+function shadowListen(sent){
+  clearShadowTimer();
+  S.shadow.phase = "listen";
+  S.speaking = true;
+  try{ S.rec && S.rec.abort(); }catch(e){}
+  pauseRecording();
+  speechSynthesis.cancel();
+  liveText.textContent = "🔊 聽示範…";
+  const u = new SpeechSynthesisUtterance(sent.text);
+  u.lang = $("recLang").value;
+  u.rate = parseFloat($("ttsRate").value);
+  const done = ()=>{
+    S.speaking = false;
+    if (!S.running || S.mode!=="shadow") return;
+    S.shadow.phase = "repeat";
+    liveText.textContent = "🗣 換你唸這一句！";
+    startRecording();
+    setTimeout(()=>{ try{ S.rec.start(); }catch(e){} }, 250);
+    bumpShadowTimer();
+  };
+  u.onend = done; u.onerror = done;
+  speechSynthesis.speak(u);
+}
+/* 句子級消化：直接對上就前進；漏詞用前瞻對齊；不逐詞記錯 */
+function shadowConsume(rawSpoken, isFinal){
+  const spoken = normalize(rawSpoken);
+  if (!spoken) return 1;
+  if (S.mode!=="shadow" || S.shadow.phase!=="repeat") return 1;
+  const sent = curSent();
+  if (!sent || S.idx >= sent.wordEnd) return 1;
+  bumpShadowTimer();
+  const target = S.words[S.idx];
+
+  if (isMatch(spoken, target.norm)){
+    target.status="done";
+    S.idx++; shadowAfterAdvance(sent);
+    return 1;
+  }
+  // 縮讀展開（gonna 對上 going to）
+  const exp = REDUCED[spoken];
+  if (exp && S.idx+1 < sent.wordEnd && (target.norm + S.words[S.idx+1].norm) === exp){
+    target.status="done"; S.words[S.idx+1].status="done";
+    S.idx += 2; shadowAfterAdvance(sent);
+    return 1;
+  }
+  // 前瞻對齊：只在最終結果做，避免暫時結果誤標漏詞
+  if (isFinal){
+    for (let j=S.idx+1; j<=Math.min(S.idx+2, sent.wordEnd-1); j++){
+      if (isMatch(spoken, S.words[j].norm)){
+        for (let k=S.idx; k<j; k++){ S.words[k].status="missed"; S.words[k].fails++; }
+        S.words[j].status="done";
+        S.idx = j+1; shadowAfterAdvance(sent);
+        return 1;
+      }
+    }
+    // 回讀與語助詞：忽略；其他雜訊也不記錯（整句以比例評分）
+    return 1;
+  }
+  return 0; // 暫時結果不符 → 等修正
+}
+function shadowAfterAdvance(sent){
+  paint(); updateHud();
+  if (S.idx >= sent.wordEnd) evaluateSentence();
+}
+function evaluateSentence(){
+  clearShadowTimer();
+  const sent = curSent();
+  if (!sent) return;
+  const range = S.words.slice(sent.wordStart, sent.wordEnd);
+  const done = range.filter(w=>w.status==="done").length;
+  const ratio = done / range.length;
+  if (ratio >= getThreshold()){ resolveSentence(); return; }
+  S.shadow.attempts++;
+  const max = Math.max(1, parseInt($("maxAttempts").value,10)||2);
+  if (S.shadow.attempts >= max){ resolveSentence(); return; }
+  // 未達標 → 重聽示範再試一次（漏掉的詞累計卡關次數）
+  range.forEach(w=>{
+    if (w.status!=="done" && w.status!=="pending") w.fails++;
+    w.status="pending";
+  });
+  S.idx = sent.wordStart;
+  paint();
+  shadowListen(sent);
+}
+function resolveSentence(){
+  const sent = curSent();
+  if (!sent) return;
+  for (let w=sent.wordStart; w<sent.wordEnd; w++){
+    const word = S.words[w];
+    if (word.status!=="done"){
+      word.status="helped"; word.gotHelp=true; word.fails=Math.max(1,word.fails);
+    }
+  }
+  sent.el.classList.remove("active");
+  S.idx = sent.wordEnd;
+  paint(); updateHud();
+  if (S.shadow.sent+1 >= S.sentences.length){ finishSession(); return; }
+  shadowEnterSentence(S.shadow.sent+1);
+}
 
 /* ===================== 練習流程 ===================== */
 btnStart.onclick = ()=>{
@@ -1117,13 +1305,19 @@ btnStart.onclick = ()=>{
   S.running = true;
   btnStart.textContent = "⏸ 暫停";
   btnStart.classList.remove("primary");
-  startRecording();
   S.rec = buildRecognition();
-  try{ S.rec.start(); }
-  catch(e){ showNotice("啟動辨識失敗，請重新整理頁面再試一次。"); }
+  if (S.mode==="shadow"){
+    shadowEnterSentence(shadowSentOf(S.idx)); // 由聽示範開始，錄音與辨識在示範結束後啟動
+  } else {
+    startRecording();
+    try{ S.rec.start(); }
+    catch(e){ showNotice("啟動辨識失敗，請重新整理頁面再試一次。"); }
+  }
 };
 function stopSession(silent){
   S.running=false; S.speaking=false;
+  clearShadowTimer();
+  S.shadow.phase="idle";
   try{ S.rec && S.rec.abort(); }catch(e){}
   speechSynthesis.cancel();
   pauseRecording();
@@ -1133,6 +1327,22 @@ function stopSession(silent){
   if(!silent) liveText.textContent="已暫停，按「開始練習」繼續。";
 }
 btnSkip.onclick = ()=>{
+  if (S.mode==="shadow"){
+    const sent = curSent();
+    if (!sent) return;
+    clearShadowTimer();
+    speechSynthesis.cancel(); S.speaking=false;
+    for (let w=sent.wordStart; w<sent.wordEnd; w++){
+      if (S.words[w].status!=="done") S.words[w].status="skipped";
+    }
+    sent.el.classList.remove("active");
+    S.idx = sent.wordEnd;
+    paint(); updateHud();
+    if (S.shadow.sent+1 >= S.sentences.length){ finishSession(); return; }
+    if (S.running) shadowEnterSentence(S.shadow.sent+1);
+    else S.shadow.sent++;
+    return;
+  }
   const w=S.words[S.idx];
   if(!w) return;
   w.status="skipped";
@@ -1148,8 +1358,29 @@ function updateHud(){
   if(!S.words.length){ stats.textContent=""; return; }
   const L = lv();
   const levelPart = S.levels.length>1 ? `第 ${S.level+1}/${S.levels.length} 關 ・ ` : "";
+  if (S.mode==="shadow" && S.sentences.length){
+    stats.textContent = levelPart + `第 ${Math.min(S.shadow.sent+1,S.sentences.length)} / ${S.sentences.length} 句`;
+    return;
+  }
   stats.textContent = levelPart + `進度 ${Math.max(0, Math.min(S.idx,L.wordEnd)-L.wordStart)} / ${L.wordEnd-L.wordStart}`;
 }
+/* 模式切換 */
+document.querySelectorAll("#modeSeg .seg").forEach(btn=>{
+  btn.onclick = ()=>{
+    const m = btn.dataset.m;
+    if (m === S.mode) return;
+    S.mode = m;
+    document.querySelectorAll("#modeSeg .seg").forEach(b=>b.classList.toggle("on", b.dataset.m===m));
+    btnSkip.textContent = m==="shadow" ? "⏭ 跳過此句" : "⏭ 跳過此詞";
+    btnHear.textContent = m==="shadow" ? "🔊 再聽這句" : "🔊 聽這個詞";
+    if (S.words.length){
+      setLevel(S.level);
+      liveText.textContent = m==="shadow"
+        ? "影子跟讀：按開始後先聽整句示範，再跟著唸。"
+        : "逐詞挑戰：按開始後唸出黃色標記的詞。";
+    }
+  };
+});
 function finishSession(){
   stopSession(true);
   progressFill.style.width="100%";
