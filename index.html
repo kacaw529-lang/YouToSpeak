@@ -445,21 +445,72 @@ const ONES=["zero","one","two","three","four","five","six","seven","eight","nine
 const TENS=["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
 function numToWords(n){
   n = parseInt(n,10);
-  if (isNaN(n) || n<0 || n>999) return null;
+  if (isNaN(n) || n<0 || n>9999) return null;
   if (n<20) return ONES[n];
   if (n<100) return TENS[Math.floor(n/10)] + (n%10 ? ONES[n%10] : "");
-  return ONES[Math.floor(n/100)] + "hundred" + (n%100 ? numToWords(n%100) : "");
+  if (n<1000) return ONES[Math.floor(n/100)] + "hundred" + (n%100 ? numToWords(n%100) : "");
+  return ONES[Math.floor(n/1000)] + "thousand" + (n%1000 ? numToWords(n%1000) : "");
 }
+/* 序數：1st→first、21st→twentyfirst（涵蓋日期常用範圍） */
+const ORD_ONES={1:"first",2:"second",3:"third",4:"fourth",5:"fifth",6:"sixth",7:"seventh",
+  8:"eighth",9:"ninth",10:"tenth",11:"eleventh",12:"twelfth",13:"thirteenth",14:"fourteenth",
+  15:"fifteenth",16:"sixteenth",17:"seventeenth",18:"eighteenth",19:"nineteenth"};
+const ORD_TENS={20:"twentieth",30:"thirtieth",40:"fortieth",50:"fiftieth",60:"sixtieth",
+  70:"seventieth",80:"eightieth",90:"ninetieth"};
+function ordinalWords(n){
+  if (ORD_ONES[n]) return ORD_ONES[n];
+  if (ORD_TENS[n]) return ORD_TENS[n];
+  if (n>20 && n<100){
+    const t=Math.floor(n/10)*10, o=n%10;
+    if (TENS[t/10] && ORD_ONES[o]) return TENS[t/10] + ORD_ONES[o];
+  }
+  return null;
+}
+/* 西元年：1984→nineteeneightyfour、2005→twothousandfive、2026→twentytwentysix */
+function yearToWords(s){
+  const y=parseInt(s,10);
+  if (y>=2000 && y<=2009) return "twothousand" + (y%100 ? ONES[y%100] : "");
+  if (y>=1100 && y<=2099){
+    const p1=Math.floor(y/100), p2=y%100;
+    const hi=numToWords(p1);
+    if (!hi) return null;
+    if (p2===0) return hi+"hundred";
+    return hi + (p2<10 ? "oh"+ONES[p2] : numToWords(p2));
+  }
+  return null;
+}
+/* 縮讀與慣用寫法的標準形對映（雙向：canon 後比較） */
+const REDUCED = {
+  gonna:"goingto", wanna:"wantto", gotta:"gotto", kinda:"kindof", sorta:"sortof",
+  lemme:"letme", gimme:"giveme", dunno:"donotknow", outta:"outof", lotta:"lotof",
+  gotcha:"gotyou", cmon:"comeon", cuz:"because", cos:"because",
+  ok:"okay", mr:"mister", mrs:"missus", dr:"doctor", till:"until", til:"until"
+};
+function canon(x){ return REDUCED[x] || x; }
 function normalize(w){
-  let s = w.toLowerCase()
-    .replace(/[’‘]/g,"'")
-    .replace(/[^a-z0-9']/g,"")   // 去標點，保留撇號先處理縮寫
-    .trim();
+  let s = w.toLowerCase().replace(/[’‘]/g,"'");
+  // 金額與百分比要在剝除符號前先辨識
+  const money   = /^\$[\d,.]+$/.test(s);
+  const percent = /^[\d,.]+%$/.test(s);
+  s = s.replace(/,(?=\d{3}\b)/g,"")            // 千分位逗號
+       .replace(/[^a-z0-9']/g,"")              // 去標點，保留撇號先處理縮寫
+       .trim();
   if (!s) return "";
   const noApos = s.replace(/'/g,"");
-  if (CONTRACTIONS[noApos]) s = CONTRACTIONS[noApos];
-  else s = noApos;
-  if (/^\d+$/.test(s)) { const t = numToWords(s); if (t) s = t; }
+  s = CONTRACTIONS[noApos] || noApos;
+  const om = s.match(/^(\d+)(st|nd|rd|th)$/);  // 序數
+  if (om){
+    const t = ordinalWords(parseInt(om[1],10));
+    if (t) return t;
+  }
+  if (/^\d+$/.test(s)){
+    let t = null;
+    if (/^\d{4}$/.test(s)) t = yearToWords(s); // 西元年優先以年份唸法轉換
+    if (!t) t = numToWords(s);
+    if (t) s = t;
+  }
+  if (money)   s += "dollars";
+  if (percent) s += "percent";
   return s;
 }
 
@@ -513,6 +564,7 @@ function soundex(s){
   return (first+code+"000").slice(0,4);
 }
 function isMatch(spoken, target){
+  spoken = canon(spoken); target = canon(target);   // 縮讀標準化：gonna↔goingto、mr↔mister…
   const th = getThreshold();
   if (spoken === target) return true;
   if (similarity(spoken,target) >= th) return true;
@@ -909,6 +961,13 @@ function tryConsume(rawSpoken, isFinal){
     advance(target);
     return 1;
   }
+  // 縮讀展開：辨識輸出 gonna/wanna 等單一 token，對應課文上連續兩個詞
+  const exp = REDUCED[spoken];
+  if (exp && S.idx+1 < lv().wordEnd && (target.norm + S.words[S.idx+1].norm) === exp){
+    advance(target);            // going
+    advance(S.words[S.idx]);    // to（advance 後 S.idx 已指向它）
+    return 1;
+  }
   // 冠詞順帶通過：辨識引擎常省略 a/an/the 或併進後面的詞，
   // 若辨識詞對上冠詞後方的實詞，代表學生已連著唸過冠詞，一併記為通過
   let look = S.idx;
@@ -921,6 +980,13 @@ function tryConsume(rawSpoken, isFinal){
     }
     advance(S.words[S.idx]); // 對上的那個實詞
     return 1;
+  }
+  // 回讀忽略：學生常重唸剛唸過的詞、或整句重來（self-repair），
+  // 辨識詞若符合剛完成的前 4 個詞，視為回讀，不記錯也不前進
+  for (let k=1; k<=4; k++){
+    const j = S.idx - k;
+    if (j < lv().wordStart) break;
+    if (isMatch(spoken, S.words[j].norm)) return 1;
   }
   // 語助詞（um、uh、hmm…）：吃掉但不前進、不記錯
   if (FILLERS.has(spoken)) return 1;
