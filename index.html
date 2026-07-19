@@ -166,6 +166,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;padding:20px;g
 .seg.on{background:var(--accent);color:#fff}
 .seg.on:hover{background:var(--accent-dark)}
 .w.missed{background:#FBE9EA;color:#B4444A}
+.w.chunkw{background:var(--hl-soft)}
 .sent.active{
   background:#FFFBE8;border-radius:10px;
   box-shadow:inset 4px 0 0 var(--hl);
@@ -934,6 +935,12 @@ function render(){
 }
 function paint(){
   const L = lv();
+  // 影子模式：標示目前跟讀單位（不論是否已按開始）
+  let chunk = null;
+  if (S.mode==="shadow" && S.sentences.length){
+    chunk = S.sentences[Math.min(S.shadow.sent, S.sentences.length-1)] || null;
+  }
+  S.sentences.forEach(s=> s.el.classList.toggle("active", !!chunk && s.el===chunk.el));
   S.words.forEach((w,i)=>{
     if (!w.el) return; // 不在本關畫面上的詞
     w.el.className="w";
@@ -942,6 +949,7 @@ function paint(){
     else if (w.status==="helped") w.el.classList.add("helped");
     else if (w.status==="skipped") w.el.classList.add("skipped");
     else if (w.status==="missed") w.el.classList.add("missed");
+    else if (chunk && i>=chunk.wordStart && i<chunk.wordEnd) w.el.classList.add("chunkw");
   });
   const cur=S.words[S.idx];
   if (cur && cur.el) cur.el.scrollIntoView({block:"center", behavior:"smooth"});
@@ -956,7 +964,6 @@ function jumpTo(i){
     } else {
       S.shadow.sent = si;
       S.idx = S.sentences[si] ? S.sentences[si].wordStart : i;
-      S.sentences.forEach(s=>s.el.classList.remove("active"));
       paint(); updateHud();
     }
     return;
@@ -1375,10 +1382,9 @@ btnSkip.onclick = ()=>{
     }
     sent.el.classList.remove("active");
     S.idx = sent.wordEnd;
-    paint(); updateHud();
-    if (S.shadow.sent+1 >= S.sentences.length){ finishSession(); return; }
-    if (S.running) shadowEnterSentence(S.shadow.sent+1);
-    else S.shadow.sent++;
+    if (S.shadow.sent+1 >= S.sentences.length){ paint(); updateHud(); finishSession(); return; }
+    if (S.running){ paint(); updateHud(); shadowEnterSentence(S.shadow.sent+1); }
+    else { S.shadow.sent++; paint(); updateHud(); }
     return;
   }
   const w=S.words[S.idx];
