@@ -892,6 +892,7 @@ function buildRecognition(){
   return rec;
 }
 /* 回傳 1=成功前進, 0=不符 */
+const ARTICLES = new Set(["a","an","the"]);
 function tryConsume(rawSpoken, isFinal){
   const spoken = normalize(rawSpoken);
   if (!spoken) return 1; // 空token直接吃掉
@@ -899,6 +900,19 @@ function tryConsume(rawSpoken, isFinal){
 
   if (isMatch(spoken, target.norm)){
     advance(target);
+    return 1;
+  }
+  // 冠詞順帶通過：辨識引擎常省略 a/an/the 或併進後面的詞，
+  // 若辨識詞對上冠詞後方的實詞，代表學生已連著唸過冠詞，一併記為通過
+  let look = S.idx;
+  while (look < lv().wordEnd && ARTICLES.has(S.words[look].norm) && (look - S.idx) < 2) look++;
+  if (look > S.idx && look < lv().wordEnd && isMatch(spoken, S.words[look].norm)){
+    while (S.idx < look){
+      const fw = S.words[S.idx];
+      fw.status = fw.gotHelp ? "helped" : "done";
+      S.idx++;
+    }
+    advance(S.words[S.idx]); // 對上的那個實詞
     return 1;
   }
   // 合併比對：上一個沒對到的詞 + 這個詞（處理 ice+cream=icecream、I+am=iam）
@@ -1187,9 +1201,15 @@ async function fetchPhrases(word){
   precedes.filter(x=>okWord(x.word)).slice(0,2).forEach(x=>phrases.push(x.word+" "+word.toLowerCase()));
   return phrases;
 }
-$("btnAgain").onclick = ()=>{ $("overlay").classList.remove("show"); setLevel(S.level); };
-$("btnNext").onclick  = ()=>{ $("overlay").classList.remove("show"); setLevel(S.level+1); liveText.textContent=`進入第 ${S.level+1} 關，按「開始練習」出發！`; };
-$("btnClose").onclick = ()=>{ $("overlay").classList.remove("show"); };
+function closeOverlay(){
+  $("overlay").classList.remove("show");
+  const p = $("playback");
+  try{ p.pause(); }catch(e){}
+  try{ speechSynthesis.cancel(); }catch(e){} // 停掉學習卡正在唸的詞或片語
+}
+$("btnAgain").onclick = ()=>{ closeOverlay(); setLevel(S.level); };
+$("btnNext").onclick  = ()=>{ closeOverlay(); setLevel(S.level+1); liveText.textContent=`進入第 ${S.level+1} 關，按「開始練習」出發！`; };
+$("btnClose").onclick = ()=>{ closeOverlay(); };
 
 /* ===================== 設定 ===================== */
 $("btnSettings").onclick = ()=> $("settings").classList.toggle("open");
