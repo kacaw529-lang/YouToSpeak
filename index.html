@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英語口說跟讀練習器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --paper:#F2F6FA;
+  --card:#FFFFFF;
+  --ink:#22303F;
+  --ink-soft:#5B6B7C;
+  --line:#DCE4EC;
+  --hl:#FFD84D;
+  --hl-soft:#FFF3C4;
+  --done-bg:#E3F4EA;
+  --done-ink:#1F7A4F;
+  --helped-bg:#FCEFD5;
+  --helped-ink:#9A6B15;
+  --skip-ink:#93A1B0;
+  --accent:#2B6CB0;
+  --accent-dark:#1F5490;
+  --error:#E5484D;
+  --radius:14px;
+  --body:"Atkinson Hyperlegible","Microsoft JhengHei","PingFang TC",sans-serif;
+  --display:"Fredoka","Microsoft JhengHei","PingFang TC",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--body);
+  background:var(--paper);
+  color:var(--ink);
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+}
+header{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 22px;
+  background:var(--card);
+  border-bottom:1px solid var(--line);
+}
+.logo{display:flex;align-items:baseline;gap:10px}
+.logo h1{font-family:var(--display);font-weight:600;font-size:1.25rem;color:var(--ink)}
+.logo .mark{
+  display:inline-block;padding:0 8px;border-radius:6px;
+  background:linear-gradient(104deg,transparent 4%,var(--hl) 4% 96%,transparent 96%);
+  transform:rotate(-1.5deg);
+}
+.logo small{color:var(--ink-soft);font-size:.8rem}
+.spacer{flex:1}
+button{
+  font-family:var(--body);font-size:.9rem;font-weight:700;
+  border:1px solid var(--line);border-radius:10px;
+  background:var(--card);color:var(--ink);
+  padding:8px 14px;cursor:pointer;
+  transition:background .15s,border-color .15s,transform .05s;
+}
+button:hover{background:#F0F4F8;border-color:#C4D0DC}
+button:active{transform:scale(.97)}
+button:focus-visible{outline:3px solid var(--hl);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{background:var(--accent-dark)}
+button.danger-ghost{color:var(--error)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type="file"]{display:none}
+
+main{flex:1;display:flex;flex-direction:column;align-items:center;padding:20px;gap:16px}
+.stage{width:100%;max-width:860px;display:flex;flex-direction:column;gap:16px}
+
+/* 設定面板 */
+#settings{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px 22px;display:none;grid-template-columns:1fr 1fr;gap:18px 32px;
+}
+#settings.open{display:grid}
+.setting label{display:block;font-weight:700;font-size:.9rem;margin-bottom:6px}
+.setting .hint{font-size:.78rem;color:var(--ink-soft);margin-top:4px;line-height:1.5}
+.setting input[type="range"]{width:100%;accent-color:var(--accent)}
+.setting select,.setting input[type="number"]{
+  font-family:var(--body);font-size:.9rem;padding:6px 10px;
+  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
+}
+.range-row{display:flex;align-items:center;gap:10px}
+.range-val{min-width:64px;text-align:right;font-weight:700;color:var(--accent)}
+
+/* 閱讀卡 */
+#readerCard{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;display:flex;flex-direction:column;min-height:340px;
+}
+#progressTrack{height:6px;background:#E9EFF5}
+#progressFill{height:100%;width:0%;background:linear-gradient(90deg,var(--hl),#FFC93C);transition:width .25s}
+#reader{
+  flex:1;padding:30px 36px;overflow-y:auto;max-height:52vh;
+  font-size:1.7rem;line-height:2.05;letter-spacing:.01em;
+}
+.sent{margin:0 0 18px}
+.sent.blank{margin:0 0 10px}
+.sent .zh{
+  font-size:.98rem;line-height:1.7;color:var(--ink-soft);
+  margin-top:2px;padding-left:6px;
+  border-left:3px solid var(--line);
+}
+#reader .placeholder{
+  color:var(--ink-soft);font-size:1rem;line-height:1.9;text-align:center;
+  padding:48px 24px;
+}
+#reader .placeholder strong{color:var(--ink)}
+.w{
+  display:inline-block;padding:1px 5px;margin:0 1px;border-radius:7px;cursor:pointer;
+  transition:background .15s,color .15s;
+}
+.w:hover{background:#EEF3F8}
+.w.current{
+  background:linear-gradient(104deg,transparent 3%,var(--hl) 3% 97%,transparent 97%);
+  transform:rotate(-1deg);
+  font-weight:700;
+  animation:pop .25s ease;
+}
+.w.done{background:var(--done-bg);color:var(--done-ink)}
+.w.helped{background:var(--helped-bg);color:var(--helped-ink)}
+.w.skipped{color:var(--skip-ink);text-decoration:line-through}
+.w.flash{animation:shake .4s ease;background:#FBDADC;color:var(--error)}
+@keyframes pop{0%{transform:scale(.9) rotate(-1deg)}100%{transform:scale(1) rotate(-1deg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@media (prefers-reduced-motion:reduce){
+  .w.current,.w.flash{animation:none}
+  #progressFill{transition:none}
+}
+
+/* 控制列 */
+#controls{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+#micDot{
+  width:14px;height:14px;border-radius:50%;background:#C3CFDA;flex:none;
+  transition:background .2s;
+}
+#micDot.live{background:var(--error);box-shadow:0 0 0 4px rgba(229,72,77,.18);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(229,72,77,.15)}50%{box-shadow:0 0 0 7px rgba(229,72,77,.08)}}
+@media (prefers-reduced-motion:reduce){#micDot.live{animation:none}}
+#liveText{
+  flex:1;min-width:160px;font-size:.85rem;color:var(--ink-soft);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#stats{font-size:.85rem;color:var(--ink-soft);font-weight:700}
+
+/* 訊息列 */
+#notice{
+  display:none;width:100%;max-width:860px;
+  background:#FDF3F3;border:1px solid #F3C4C6;color:#8F2A2E;
+  border-radius:var(--radius);padding:12px 18px;font-size:.9rem;line-height:1.7;
+}
+#notice.show{display:block}
+
+/* 完成畫面 */
+#overlay{
+  position:fixed;inset:0;background:rgba(34,48,63,.45);
+  display:none;align-items:center;justify-content:center;padding:20px;z-index:50;
+}
+#overlay.show{display:flex}
+.result-card{
+  background:var(--card);border-radius:20px;padding:32px 38px;max-width:480px;width:100%;
+  text-align:center;box-shadow:0 20px 60px rgba(34,48,63,.25);
+  max-height:88vh;overflow-y:auto;
+}
+.result-card h2{font-family:var(--display);font-weight:600;font-size:1.5rem;margin-bottom:6px}
+.result-card .sub{color:var(--ink-soft);font-size:.9rem;margin-bottom:14px}
+#encourage{
+  font-size:.95rem;line-height:1.8;margin:0 0 18px;padding:12px 16px;text-align:left;
+  background:linear-gradient(104deg,transparent 2%,var(--hl-soft) 2% 98%,transparent 98%);
+  border-radius:10px;
+}
+.result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.result-grid .cell{border-radius:12px;padding:14px 8px}
+.result-grid .num{font-family:var(--display);font-size:1.7rem;font-weight:600}
+.result-grid .lab{font-size:.78rem;margin-top:2px}
+.cell.ok{background:var(--done-bg);color:var(--done-ink)}
+.cell.help{background:var(--helped-bg);color:var(--helped-ink)}
+.cell.skip{background:#EEF2F6;color:var(--skip-ink)}
+.rc-section{text-align:left;margin:0 0 22px}
+.rc-section h3{font-family:var(--display);font-weight:600;font-size:1.02rem;margin-bottom:4px}
+.rc-section .sub2{font-size:.78rem;color:var(--ink-soft);margin-bottom:10px}
+#playback{width:100%;margin-bottom:6px}
+#dlRec{font-size:.8rem;color:var(--accent);text-decoration:none;font-weight:700}
+#dlRec:hover{text-decoration:underline}
+.lcard{
+  border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:8px;
+  cursor:pointer;transition:border-color .15s,background .15s;
+}
+.lcard:hover{border-color:#C4D0DC;background:#FAFCFE}
+.lcard .head{display:flex;align-items:center;gap:10px}
+.lcard .word{font-weight:700;font-size:1.12rem}
+.badge{font-size:.7rem;padding:2px 8px;border-radius:99px;font-weight:700}
+.badge.helped{background:var(--helped-bg);color:var(--helped-ink)}
+.badge.skipped{background:#EEF2F6;color:var(--skip-ink)}
+.lcard .chev{margin-left:auto;color:var(--ink-soft);font-size:.8rem;transition:transform .2s}
+.lcard.open .chev{transform:rotate(180deg)}
+.lcard .phrases{display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.lcard.open .phrases{display:block}
+.phrase{display:flex;align-items:center;gap:10px;padding:4px 0;font-size:.98rem}
+.phrase .ptext{flex:1}
+button.mini{padding:3px 10px;font-size:.8rem;border-radius:8px}
+.phrases .loading,.phrases .none{font-size:.85rem;color:var(--ink-soft);padding:4px 0}
+.rc-actions{margin-top:4px}
+@media (prefers-reduced-motion:reduce){.lcard .chev{transition:none}}
+footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink-soft)}
+@media (max-width:640px){
+  #settings{grid-template-columns:1fr}
+  #reader{font-size:1.35rem;padding:22px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <h1><span class="mark">Read&nbsp;Aloud</span> 英語口說跟讀練習器</h1>
+    <small>逐詞辨識．即時回饋</small>
+  </div>
+  <div class="spacer"></div>
+  <button id="btnFile">📄 載入 TXT / SRT / XLSX</button>
+  <button id="btnSample">✨ 載入範例</button>
+  <button id="btnSettings">⚙️ 設定</button>
+  <input type="file" id="fileInput" accept=".txt,.srt,.xlsx">
+</header>
+
+<main>
+  <div id="notice"></div>
+
+  <section id="settings" class="stage" aria-label="設定">
+    <div class="setting">
+      <label for="tolerance">比對容許彈性</label>
+      <div class="range-row">
+        <input type="range" id="tolerance" min="60" max="100" step="5" value="80">
+        <span class="range-val" id="toleranceVal">標準 80%</span>
+      </div>
+      <div class="hint">100%＝拼字需完全相同；80%＝允許小差異（如 elephant / elephants）；60%＝發音接近即可。80% 以下同時啟用同音容錯（to / two / too 一律算對）。</div>
+    </div>
+    <div class="setting">
+      <label for="maxAttempts">唸錯幾次後示範發音</label>
+      <input type="number" id="maxAttempts" min="1" max="5" value="2" style="width:80px">
+      <div class="hint">達到次數後會閃紅提示，並自動用慢速語音示範這個詞的正確唸法。</div>
+    </div>
+    <div class="setting">
+      <label for="ttsRate">示範發音語速</label>
+      <div class="range-row">
+        <input type="range" id="ttsRate" min="0.5" max="1.2" step="0.1" value="0.8">
+        <span class="range-val" id="ttsRateVal">0.8x</span>
+      </div>
+      <div class="hint">建議國小學生使用 0.7x～0.8x。</div>
+    </div>
+    <div class="setting">
+      <label for="mergeSent">自動併句</label>
+      <label style="font-weight:400;display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="mergeSent" style="width:18px;height:18px;accent-color:var(--accent)">
+        將字幕斷行重組為完整句子
+      </label>
+      <div class="hint">字幕檔常把一句話切成好幾列。開啟後會以句號、問號、驚嘆號重新併句，翻譯自動跟隨對應句子（斷點附近可能略有位移）。切換會重新開始目前進度。載入 XLSX / SRT 時預設開啟。</div>
+    </div>
+    <div class="setting">
+      <label for="recLang">辨識口音</label>
+      <select id="recLang">
+        <option value="en-US" selected>英語（美式 en-US）</option>
+        <option value="en-GB">英語（英式 en-GB）</option>
+        <option value="en-AU">英語（澳洲 en-AU）</option>
+      </select>
+      <div class="hint">依教材採用的口音選擇，辨識準確度會更好。</div>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div id="readerCard">
+      <div id="progressTrack"><div id="progressFill"></div></div>
+      <div id="reader" tabindex="0">
+        <div class="placeholder">
+          <strong>還沒有課文。</strong><br>
+          點右上角「載入 TXT / SRT / XLSX」選擇檔案，或先按「載入範例」試試看。<br>
+          （XLSX 支援 Language Reactor 匯出格式：練習 B 欄英文，C 欄翻譯會顯示在句子下方）<br><br>
+          載入後按「▶ 開始練習」，對著麥克風把黃色標記的詞唸出來，<br>
+          唸對就會自動前進；也可以直接點擊任何一個詞，從那裡開始練。
+        </div>
+      </div>
+    </div>
+
+    <div id="controls">
+      <button id="btnStart" class="primary" disabled>▶ 開始練習</button>
+      <button id="btnHear" disabled>🔊 聽這個詞</button>
+      <button id="btnSkip" disabled>⏭ 跳過此詞</button>
+      <button id="btnReset" class="danger-ghost" disabled>↺ 重新開始</button>
+      <div id="micDot" title="麥克風狀態"></div>
+      <div id="liveText">辨識結果會顯示在這裡</div>
+      <div id="stats"></div>
+    </div>
+  </section>
+</main>
+
+<div id="overlay">
+  <div class="result-card">
+    <h2>🎉 練習完成！</h2>
+    <div class="sub" id="resultSub"></div>
+    <div id="encourage"></div>
+    <div class="result-grid">
+      <div class="cell ok"><div class="num" id="rOk">0</div><div class="lab">一次唸對</div></div>
+      <div class="cell help"><div class="num" id="rHelp">0</div><div class="lab">聽了示範</div></div>
+      <div class="cell skip"><div class="num" id="rSkip">0</div><div class="lab">跳過</div></div>
+    </div>
+    <div class="rc-section" id="playbackBox" hidden>
+      <h3>🎧 聽聽自己的朗讀</h3>
+      <div class="sub2">和示範發音比比看，哪裡唸得不一樣？</div>
+      <audio id="playback" controls></audio>
+      <a id="dlRec" download="我的朗讀錄音.webm">⬇ 下載錄音檔</a>
+    </div>
+    <div class="rc-section" id="stuckBox" hidden>
+      <h3>🎯 卡關發音學習卡</h3>
+      <div class="sub2">點卡片展開常用片語，按 🔊 聆聽跟唸（依卡關次數排序）</div>
+      <div id="stuckCards"></div>
+    </div>
+    <div class="rc-actions">
+      <button class="primary" id="btnAgain">再練一次</button>
+      <button id="btnClose">關閉</button>
+    </div>
+  </div>
+</div>
+
+<footer>建議使用電腦版 Chrome 或 Edge，並允許麥克風權限。語音辨識需連接網路。</footer>
+
+<script>
+"use strict";
+/* ===================== 狀態 ===================== */
+const S = {
+  words: [],        // {display, norm, el, status:'pending'|'done'|'helped'|'skipped', attempts, gotHelp}
+  blocks: [],       // {segs:[{type:'word',wi}|{type:'deco',text}], zh:翻譯或null}
+  rawRows: [],      // 原始資料列（併句前），切換併句開關時重新處理用
+  sourceType: "",   // 'xlsx' | 'srt' | 'txt' | 'sample'
+  idx: 0,
+  running: false,
+  speaking: false,
+  rec: null,
+  consumed: {},     // resultIndex -> 已處理的詞數
+  lastFail: "",     // 用於合併比對（ice + cream）
+  mediaRec: null,   // MediaRecorder 實例
+  mediaStream: null,
+  mediaChunks: [],
+  mediaUrl: null,   // 錄音 blob URL
+};
+
+const $ = id => document.getElementById(id);
+const reader=$("reader"), liveText=$("liveText"), micDot=$("micDot"),
+      btnStart=$("btnStart"), btnHear=$("btnHear"), btnSkip=$("btnSkip"),
+      btnReset=$("btnReset"), stats=$("stats"), progressFill=$("progressFill"),
+      notice=$("notice");
+
+/* ===================== 瀏覽器支援檢查 ===================== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) {
+  showNotice("這個瀏覽器不支援語音辨識。請改用電腦版 <b>Chrome</b> 或 <b>Edge</b> 開啟本檔案。");
+}
+function showNotice(html){ notice.innerHTML = html; notice.classList.add("show"); }
+function hideNotice(){ notice.classList.remove("show"); }
+
+/* ===================== 文字正規化 ===================== */
+const CONTRACTIONS = {
+  "im":"iam","youre":"youare","hes":"heis","shes":"sheis","its":"itis",
+  "were":"weare","theyre":"theyare","ive":"ihave","youve":"youhave",
+  "weve":"wehave","theyve":"theyhave","ill":"iwill","youll":"youwill",
+  "hell":"hewill","shell":"shewill","well":"wewill","theyll":"theywill",
+  "isnt":"isnot","arent":"arenot","wasnt":"wasnot","werent":"werenot",
+  "dont":"donot","doesnt":"doesnot","didnt":"didnot","cant":"cannot",
+  "couldnt":"couldnot","wont":"willnot","wouldnt":"wouldnot",
+  "shouldnt":"shouldnot","lets":"letus","thats":"thatis","whats":"whatis",
+  "heres":"hereis","theres":"thereis","wheres":"whereis"
+};
+const ONES=["zero","one","two","three","four","five","six","seven","eight","nine","ten",
+  "eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+const TENS=["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+function numToWords(n){
+  n = parseInt(n,10);
+  if (isNaN(n) || n<0 || n>999) return null;
+  if (n<20) return ONES[n];
+  if (n<100) return TENS[Math.floor(n/10)] + (n%10 ? ONES[n%10] : "");
+  return ONES[Math.floor(n/100)] + "hundred" + (n%100 ? numToWords(n%100) : "");
+}
+function normalize(w){
+  let s = w.toLowerCase()
+    .replace(/[’‘]/g,"'")
+    .replace(/[^a-z0-9']/g,"")   // 去標點，保留撇號先處理縮寫
+    .trim();
+  if (!s) return "";
+  const noApos = s.replace(/'/g,"");
+  if (CONTRACTIONS[noApos]) s = CONTRACTIONS[noApos];
+  else s = noApos;
+  if (/^\d+$/.test(s)) { const t = numToWords(s); if (t) s = t; }
+  return s;
+}
+
+/* ===================== 相似度與同音 ===================== */
+function levenshtein(a,b){
+  const m=a.length,n=b.length;
+  if(!m) return n; if(!n) return m;
+  let prev=Array.from({length:n+1},(_,j)=>j), cur=new Array(n+1);
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++){
+      cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+function similarity(a,b){
+  if(a===b) return 1;
+  const maxLen=Math.max(a.length,b.length);
+  if(!maxLen) return 1;
+  return 1 - levenshtein(a,b)/maxLen;
+}
+const HOMOPHONES = [
+  ["to","two","too"],["their","there","theyre"],["your","youre"],
+  ["its","itis"],["for","four"],["one","won"],["ate","eight"],
+  ["by","buy","bye"],["see","sea"],["hear","here"],["know","no"],
+  ["right","write"],["son","sun"],["wear","where"],["would","wood"],
+  ["flower","flour"],["hour","our"],["meet","meat"],["new","knew"],
+  ["read","red"],["blue","blew"],["be","bee"],["I","eye","aye"]
+].map(g=>g.map(x=>normalize(x)));
+function homophoneEqual(a,b){
+  return HOMOPHONES.some(g => g.includes(a) && g.includes(b));
+}
+// 簡易 Soundex：寬鬆模式下「聽起來像」也放行
+function soundex(s){
+  if(!s) return "";
+  const map={b:1,f:1,p:1,v:1,c:2,g:2,j:2,k:2,q:2,s:2,x:2,z:2,d:3,t:3,l:4,m:5,n:5,r:6};
+  const first=s[0];
+  let code="", prev=map[first]||0;
+  for(let i=1;i<s.length;i++){
+    const d=map[s[i]];
+    if(d && d!==prev) code+=d;
+    if(s[i]!=="h" && s[i]!=="w") prev=d||0;
+  }
+  return (first+code+"000").slice(0,4);
+}
+function isMatch(spoken, target){
+  const th = getThreshold();
+  if (spoken === target) return true;
+  if (similarity(spoken,target) >= th) return true;
+  if (th <= 0.8 && homophoneEqual(spoken,target)) return true;
+  if (th <= 0.65 && spoken && target && soundex(spoken)===soundex(target)) return true;
+  return false;
+}
+function getThreshold(){ return parseInt($("tolerance").value,10)/100; }
+
+/* ===================== 檔案載入 ===================== */
+$("btnFile").onclick = ()=> $("fileInput").click();
+$("fileInput").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  if (/\.xlsx$/i.test(f.name)){
+    r.onload = () => {
+      try{ setSource(parseXLSX(r.result), "xlsx"); }
+      catch(err){ showNotice("XLSX 讀取失敗：" + err.message + "。請確認是 Language Reactor 匯出的檔案，或另存為 .xlsx 後再試。"); }
+    };
+    r.readAsArrayBuffer(f);
+  } else {
+    r.onload = () => {
+      let text = String(r.result);
+      const isSrt = /\.srt$/i.test(f.name);
+      if (isSrt) text = parseSRT(text);
+      setSource(text.split(/\r?\n/).map(line=>({en:line, zh:null})), isSrt ? "srt" : "txt");
+    };
+    r.readAsText(f, "UTF-8");
+  }
+  e.target.value = "";
+};
+/* 統一入口：記住原始列，依來源決定併句預設，再進行處理 */
+function setSource(rows, type){
+  S.rawRows = rows;
+  S.sourceType = type;
+  $("mergeSent").checked = (type==="xlsx" || type==="srt"); // 字幕類預設併句
+  applyRows();
+}
+function applyRows(){
+  if (!S.rawRows.length) return;
+  const rows = $("mergeSent").checked ? mergeRows(S.rawRows) : S.rawRows;
+  loadRows(rows);
+}
+/* ===================== 跨列併句 ===================== */
+const NO_BREAK_ABBR = /^(mr|mrs|ms|dr|prof|st|vs|etc|no|jr|sr|e\.g|i\.e|a\.m|p\.m|u\.s|u\.k)\.$/i;
+function isSentenceEnd(tok){
+  if (!/[.!?…]["'”’)\]]*$/.test(tok)) return false;   // 不是以句尾標點結束
+  if (NO_BREAK_ABBR.test(tok)) return false;            // 常見縮寫不斷句
+  if (/^[A-Z]\.$/.test(tok)) return false;              // 單一大寫字母縮寫（人名縮寫）
+  return true;
+}
+function mergeRows(rows){
+  // 1. 攤平成 token 流，記住每個 token 來自哪一列
+  const tokens=[];
+  rows.forEach((r,ri)=>{
+    String(r.en||"").split(/\s+/).filter(Boolean).forEach(t=>tokens.push({t, ri}));
+  });
+  // 2. 以句尾標點切成句子
+  const sentences=[]; let cur=[];
+  tokens.forEach(tk=>{
+    cur.push(tk);
+    if (isSentenceEnd(tk.t)){ sentences.push(cur); cur=[]; }
+  });
+  if (cur.length) sentences.push(cur);
+  // 3. 翻譯對齊：每一列的翻譯歸給「分到該列最多英文字」的那個句子
+  const overlap = sentences.map(s=>{
+    const m={}; s.forEach(tk=>{ m[tk.ri]=(m[tk.ri]||0)+1; }); return m;
+  });
+  const rowToSent = new Array(rows.length).fill(-1);
+  rows.forEach((r,ri)=>{
+    let best=-1, bestCount=0;
+    overlap.forEach((m,si)=>{
+      const c=m[ri]||0;
+      if (c>bestCount){ bestCount=c; best=si; }
+    });
+    rowToSent[ri]=best;
+  });
+  // 4. 組合輸出
+  return sentences.map((s,si)=>{
+    const zhParts=[];
+    rows.forEach((r,ri)=>{
+      if (rowToSent[ri]===si && r.zh) zhParts.push(r.zh);
+    });
+    const zh = zhParts.join("").replace(/^[。，、；\s]+/,"").trim();
+    return {en: s.map(tk=>tk.t).join(" "), zh: zh||null};
+  });
+}
+/* 解析 XLSX：B 欄=英文（練習用），C 欄=翻譯（僅顯示） */
+function parseXLSX(buf){
+  if (typeof XLSX === "undefined") throw new Error("解析函式庫未載入（請確認網路連線後重新整理）");
+  const wb = XLSX.read(buf, {type:"array"});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const arr = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+  const rows = [];
+  arr.forEach(r=>{
+    const en = String(r[1] ?? "").trim();
+    let zh = String(r[2] ?? "").trim().replace(/[\u200b\u200c\u200d\ufeff]/g,"").replace(/\s+/g," ");
+    if (!en) return;
+    if (/^subtitle$/i.test(en)) return;                    // 表頭列
+    if (/^machine translation$/i.test(zh)) zh = "";
+    rows.push({en, zh: zh || null});
+  });
+  return rows;
+}
+function parseSRT(raw){
+  return raw.split(/\r?\n/).filter(line=>{
+    const t=line.trim();
+    if(!t) return false;
+    if(/^\d+$/.test(t)) return false;                       // 序號
+    if(/^\d{1,2}:\d{2}:\d{2}[.,]\d{1,3}\s*-->/.test(t)) return false; // 時間軸
+    return true;
+  }).map(l=>l.replace(/<[^>]+>/g,"").replace(/\{[^}]+\}/g,"")).join("\n");
+}
+$("btnSample").onclick = ()=> setSource([
+  {en:"The Little Seed", zh:"小種子"},
+  {en:"A little seed slept under the ground.", zh:"一顆小種子睡在土裡。"},
+  {en:"One day, the rain came down. Drip, drop, drip!", zh:"有一天，雨落下來了。滴、答、滴！"},
+  {en:'The seed woke up and said, "I want to see the sun."', zh:"種子醒了，說：「我想看看太陽。」"},
+  {en:"It pushed and pushed. Up, up, up it went.", zh:"它推呀推，往上、往上、一直往上。"},
+  {en:"Soon a small green leaf came out of the ground.", zh:"很快，一片綠色的小葉子從土裡冒出來。"},
+  {en:'The sun smiled. "Hello, little plant! Welcome to the world."', zh:"太陽微笑著說：「哈囉，小植物！歡迎來到這個世界。」"},
+  {en:"Day by day, the plant grew taller and taller.", zh:"一天又一天，小植物越長越高。"},
+  {en:"After 2 weeks, it had a big yellow flower.", zh:"兩個星期後，它開出一朵大大的黃花。"},
+  {en:'The bees came to visit. "What a beautiful flower!" they said.', zh:"蜜蜂來拜訪：「好漂亮的花啊！」"},
+  {en:"The little seed was not little anymore. It was happy.", zh:"小種子不再是小種子了。它很快樂。"}
+], "sample");
+
+/* ===================== 建立閱讀畫面 ===================== */
+/* 共同入口：rows = [{en:英文句, zh:翻譯或null}] */
+function loadRows(rows){
+  stopSession(true);
+  discardRecording();
+  S.words=[]; S.blocks=[]; S.idx=0;
+  rows.forEach(row=>{
+    const segs=[];
+    String(row.en||"").split(/\s+/).filter(Boolean).forEach(tok=>{
+      const norm = normalize(tok);
+      if (norm){
+        segs.push({type:"word", wi:S.words.length});
+        S.words.push({display:tok, norm, status:"pending", attempts:0, fails:0, gotHelp:false, el:null});
+      } else {
+        segs.push({type:"deco", text:tok}); // 純標點或符號，僅顯示
+      }
+    });
+    S.blocks.push({segs, zh:row.zh||null});
+  });
+  render();
+  if (!S.words.length){
+    showNotice("檔案裡沒有可以練習的英文單字，請確認檔案內容。");
+    return;
+  }
+  hideNotice();
+  btnStart.disabled = !SR;
+  btnReset.disabled = false;
+  btnHear.disabled = false;
+  btnSkip.disabled = false;
+  updateHud();
+}
+function render(){
+  reader.innerHTML="";
+  S.blocks.forEach(block=>{
+    const div=document.createElement("div");
+    div.className="sent" + (block.segs.length ? "" : " blank");
+    const en=document.createElement("div");
+    en.className="en";
+    block.segs.forEach(seg=>{
+      if (seg.type==="deco"){
+        const sp=document.createElement("span");
+        sp.textContent=seg.text+" ";
+        en.appendChild(sp);
+        return;
+      }
+      const w=S.words[seg.wi];
+      const sp=document.createElement("span");
+      sp.className="w";
+      sp.textContent=w.display;
+      sp.title="點一下從這個詞開始練";
+      sp.onclick=()=>jumpTo(seg.wi);
+      w.el=sp;
+      en.appendChild(sp);
+      en.appendChild(document.createTextNode(" "));
+    });
+    if (block.segs.length) div.appendChild(en);
+    if (block.zh){
+      const zh=document.createElement("div");
+      zh.className="zh";
+      zh.textContent=block.zh;
+      div.appendChild(zh);
+    }
+    reader.appendChild(div);
+  });
+  paint();
+}
+function paint(){
+  S.words.forEach((w,i)=>{
+    w.el.className="w";
+    if (i===S.idx && S.idx<S.words.length) w.el.classList.add("current");
+    else if (w.status==="done") w.el.classList.add("done");
+    else if (w.status==="helped") w.el.classList.add("helped");
+    else if (w.status==="skipped") w.el.classList.add("skipped");
+  });
+  const cur=S.words[S.idx];
+  if (cur) cur.el.scrollIntoView({block:"center", behavior:"smooth"});
+  progressFill.style.width = (S.words.length? (S.idx/S.words.length*100):0) + "%";
+}
+function jumpTo(i){
+  S.idx=i;
+  S.lastFail="";
+  const w=S.words[i];
+  w.status="pending"; w.attempts=0;
+  paint(); updateHud();
+}
+
+/* ===================== 語音辨識 ===================== */
+function buildRecognition(){
+  const rec = new SR();
+  rec.lang = $("recLang").value;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+
+  rec.onstart = ()=>{ micDot.classList.add("live"); S.consumed={}; };
+  rec.onend = ()=>{
+    micDot.classList.remove("live");
+    // 練習進行中且不是在播示範音，就自動重啟（Chrome 靜音幾秒會自己停）
+    if (S.running && !S.speaking){
+      setTimeout(()=>{ try{ rec.start(); }catch(e){} }, 250);
+    }
+  };
+  rec.onerror = ev=>{
+    if (ev.error==="not-allowed" || ev.error==="service-not-allowed"){
+      stopSession(true);
+      showNotice("無法使用麥克風。請點網址列左側的圖示允許麥克風權限後，重新按「開始練習」。若仍失敗，可將本檔案放到 HTTPS 網頁空間（如 GitHub Pages）再開啟。");
+    }
+    // no-speech / aborted 屬正常情況，交給 onend 重啟
+  };
+  rec.onresult = ev=>{
+    let latest="";
+    for (let i=ev.resultIndex; i<ev.results.length; i++){
+      const res = ev.results[i];
+      const transcript = res[0].transcript.trim();
+      if (transcript) latest = transcript;
+      const tokens = transcript.split(/\s+/).filter(Boolean);
+      let ptr = S.consumed[i]||0;
+      while (ptr < tokens.length && S.idx < S.words.length){
+        const ok = tryConsume(tokens[ptr], res.isFinal);
+        if (ok===1){ ptr++; }               // 比對成功，前進
+        else if (ok===0 && res.isFinal){ ptr++; } // 最終結果仍不符 → 記一次錯誤
+        else break;                          // 暫時結果不符 → 等它修正，不記錯
+      }
+      S.consumed[i]=ptr;
+    }
+    if (latest) liveText.textContent = "🎧 " + latest;
+    if (S.idx >= S.words.length) finishSession();
+  };
+  return rec;
+}
+/* 回傳 1=成功前進, 0=不符 */
+function tryConsume(rawSpoken, isFinal){
+  const spoken = normalize(rawSpoken);
+  if (!spoken) return 1; // 空token直接吃掉
+  const target = S.words[S.idx];
+
+  if (isMatch(spoken, target.norm)){
+    advance(target);
+    return 1;
+  }
+  // 合併比對：上一個沒對到的詞 + 這個詞（處理 ice+cream=icecream、I+am=iam）
+  if (S.lastFail && isMatch(S.lastFail + spoken, target.norm)){
+    S.lastFail="";
+    advance(target);
+    return 1;
+  }
+  if (isFinal){
+    S.lastFail = spoken;
+    registerFail(target);
+  }
+  return 0;
+}
+function advance(w){
+  w.status = w.gotHelp ? "helped" : "done";
+  S.idx++; S.lastFail="";
+  paint(); updateHud();
+}
+function registerFail(w){
+  w.attempts++;
+  w.fails++;
+  w.el.classList.add("flash");
+  setTimeout(()=>w.el.classList.remove("flash"), 450);
+  const max = Math.max(1, parseInt($("maxAttempts").value,10)||2);
+  if (w.attempts >= max){
+    w.attempts = 0;
+    w.gotHelp = true;
+    demonstrate(w.display);
+  }
+  updateHud();
+}
+
+/* ===================== 練習錄音 ===================== */
+function recSupported(){ return !!(navigator.mediaDevices && window.MediaRecorder); }
+async function startRecording(){
+  if (!recSupported()) return;
+  try{
+    // 暫停後繼續 → 恢復同一段錄音
+    if (S.mediaRec && S.mediaRec.state === "paused"){ S.mediaRec.resume(); return; }
+    if (S.mediaRec && S.mediaRec.state === "recording") return;
+    S.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    S.mediaChunks = [];
+    S.mediaRec = new MediaRecorder(S.mediaStream);
+    S.mediaRec.ondataavailable = e=>{ if (e.data && e.data.size) S.mediaChunks.push(e.data); };
+    S.mediaRec.start(1000); // 每秒收一塊
+  }catch(e){ /* 錄音不可用時不影響練習主流程 */ }
+}
+function pauseRecording(){
+  try{ if (S.mediaRec && S.mediaRec.state === "recording") S.mediaRec.pause(); }catch(e){}
+}
+function stopRecording(cb){
+  const rec = S.mediaRec;
+  if (!rec || rec.state === "inactive"){ releaseStream(); cb && cb(null); return; }
+  rec.onstop = ()=>{
+    const blob = S.mediaChunks.length
+      ? new Blob(S.mediaChunks, {type: rec.mimeType || "audio/webm"})
+      : null;
+    releaseStream();
+    cb && cb(blob);
+  };
+  try{ rec.stop(); }
+  catch(e){ releaseStream(); cb && cb(null); }
+}
+function releaseStream(){
+  try{ S.mediaStream && S.mediaStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  S.mediaStream = null;
+  S.mediaRec = null;
+}
+function discardRecording(){
+  try{ if (S.mediaRec && S.mediaRec.state !== "inactive"){ S.mediaRec.onstop=null; S.mediaRec.stop(); } }catch(e){}
+  releaseStream();
+  S.mediaChunks = [];
+  if (S.mediaUrl){ URL.revokeObjectURL(S.mediaUrl); S.mediaUrl = null; }
+}
+
+/* ===================== TTS 示範發音 ===================== */
+function demonstrate(word){
+  if (!("speechSynthesis" in window)) return;
+  // 播音期間關閉辨識與錄音，避免電腦自己的聲音被聽進去、錄進去
+  S.speaking = true;
+  try{ S.rec && S.rec.abort(); }catch(e){}
+  pauseRecording();
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(word.replace(/[^A-Za-z0-9'\- ]/g,""));
+  u.lang = $("recLang").value;
+  u.rate = parseFloat($("ttsRate").value);
+  const done = ()=>{
+    S.speaking = false;
+    if (S.running){
+      startRecording();
+      setTimeout(()=>{ try{ S.rec.start(); }catch(e){} }, 300);
+    }
+  };
+  u.onend = done;
+  u.onerror = done;
+  liveText.textContent = "🔊 正確唸法：" + word + "（請跟著唸一次）";
+  speechSynthesis.speak(u);
+}
+/* 結果畫面用：單純唸出文字，不涉及練習狀態 */
+function speakText(text){
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = $("recLang").value;
+  u.rate = parseFloat($("ttsRate").value);
+  speechSynthesis.speak(u);
+}
+btnHear.onclick = ()=>{
+  const w=S.words[S.idx];
+  if (w) demonstrate(w.display);
+};
+
+/* ===================== 練習流程 ===================== */
+btnStart.onclick = ()=>{
+  if (S.running){ stopSession(false); return; }
+  if (!S.words.length) return;
+  hideNotice();
+  S.running = true;
+  btnStart.textContent = "⏸ 暫停";
+  btnStart.classList.remove("primary");
+  startRecording();
+  S.rec = buildRecognition();
+  try{ S.rec.start(); }
+  catch(e){ showNotice("啟動辨識失敗，請重新整理頁面再試一次。"); }
+};
+function stopSession(silent){
+  S.running=false; S.speaking=false;
+  try{ S.rec && S.rec.abort(); }catch(e){}
+  speechSynthesis.cancel();
+  pauseRecording();
+  micDot.classList.remove("live");
+  btnStart.textContent="▶ 開始練習";
+  btnStart.classList.add("primary");
+  if(!silent) liveText.textContent="已暫停，按「開始練習」繼續。";
+}
+btnSkip.onclick = ()=>{
+  const w=S.words[S.idx];
+  if(!w) return;
+  w.status="skipped";
+  S.idx++; S.lastFail="";
+  paint(); updateHud();
+  if (S.idx>=S.words.length) finishSession();
+};
+btnReset.onclick = ()=>{
+  stopSession(true);
+  discardRecording();
+  S.words.forEach(w=>{ w.status="pending"; w.attempts=0; w.fails=0; w.gotHelp=false; });
+  S.idx=0; S.lastFail="";
+  paint(); updateHud();
+  liveText.textContent="已重新開始。";
+};
+function updateHud(){
+  if(!S.words.length){ stats.textContent=""; return; }
+  stats.textContent = `進度 ${Math.min(S.idx,S.words.length)} / ${S.words.length}`;
+}
+function finishSession(){
+  stopSession(true);
+  progressFill.style.width="100%";
+  const ok   = S.words.filter(w=>w.status==="done").length;
+  const help = S.words.filter(w=>w.status==="helped").length;
+  const skip = S.words.filter(w=>w.status==="skipped").length;
+  $("rOk").textContent=ok; $("rHelp").textContent=help; $("rSkip").textContent=skip;
+  const pct = Math.round(ok/S.words.length*100);
+  $("resultSub").textContent = `全文共 ${S.words.length} 個詞，一次唸對率 ${pct}%`;
+  $("encourage").textContent = encourageMsg(ok+help, S.words.length, pct);
+  buildStuckCards();
+  // 錄音需要非同步收尾，先開啟結果畫面，錄音就緒後再顯示播放器
+  $("playbackBox").hidden = true;
+  stopRecording(blob=>{
+    if (!blob || !blob.size) return;
+    if (S.mediaUrl) URL.revokeObjectURL(S.mediaUrl);
+    S.mediaUrl = URL.createObjectURL(blob);
+    $("playback").src = S.mediaUrl;
+    $("dlRec").href = S.mediaUrl;
+    $("playbackBox").hidden = false;
+  });
+  $("overlay").classList.add("show");
+}
+function encourageMsg(spoken, total, pct){
+  if (pct >= 90) return `太厲害了！你完整開口唸出了 ${spoken} 個英文單字，幾乎全部一次過關。這樣的表現連老師都要拍手！🌟`;
+  if (pct >= 70) return `很棒！你今天開口唸了 ${spoken} 個英文單字，大部分一次就唸對。進步是累積出來的，你正在路上！💪`;
+  if (pct >= 50) return `不錯喔！你完成了 ${spoken} 個單字的朗讀。卡關的詞不是不會，只是還不熟——用下面的學習卡多唸幾次，它們就是你的了！`;
+  return `你勇敢開口完成了 ${spoken} 個單字，光是願意開口就贏過很多人了。下面的學習卡幫你把難詞各個擊破，明天再來挑戰一次！🔥`;
+}
+
+/* ===================== 卡關發音學習卡 ===================== */
+function collectStuck(){
+  const map = new Map();
+  S.words.forEach(w=>{
+    if (w.status!=="helped" && w.status!=="skipped") return;
+    const clean = w.display.replace(/[^A-Za-z'’\-]/g,"") || w.display;
+    const it = map.get(w.norm) || {word:clean, count:0, skipped:false};
+    it.count += Math.max(1, w.fails);
+    if (w.status==="skipped") it.skipped = true;
+    map.set(w.norm, it);
+  });
+  return [...map.values()].sort((a,b)=>b.count-a.count);
+}
+function buildStuckCards(){
+  const list = collectStuck();
+  const box = $("stuckBox"), wrap = $("stuckCards");
+  wrap.innerHTML = "";
+  if (!list.length){ box.hidden = true; return; }
+  box.hidden = false;
+  list.forEach(item=>{
+    const card = document.createElement("div");
+    card.className = "lcard";
+    const head = document.createElement("div");
+    head.className = "head";
+    const btn = document.createElement("button");
+    btn.className = "mini"; btn.textContent = "🔊";
+    btn.title = "聽這個詞";
+    btn.onclick = ev=>{ ev.stopPropagation(); speakText(item.word); };
+    const wd = document.createElement("span");
+    wd.className = "word"; wd.textContent = item.word;
+    const badge = document.createElement("span");
+    badge.className = "badge " + (item.skipped ? "skipped" : "helped");
+    badge.textContent = item.skipped ? "跳過" : `卡關 ${item.count} 次`;
+    const chev = document.createElement("span");
+    chev.className = "chev"; chev.textContent = "▼";
+    head.append(btn, wd, badge, chev);
+    const ph = document.createElement("div");
+    ph.className = "phrases";
+    card.append(head, ph);
+    card.onclick = ()=>{
+      card.classList.toggle("open");
+      if (card.classList.contains("open") && !card.dataset.loaded){
+        card.dataset.loaded = "1";
+        loadPhrases(item.word, ph);
+      }
+    };
+    wrap.appendChild(card);
+  });
+}
+async function loadPhrases(word, container){
+  container.innerHTML = '<div class="loading">正在找常用片語…</div>';
+  try{
+    const phrases = await fetchPhrases(word);
+    container.innerHTML = "";
+    if (!phrases.length){
+      container.innerHTML = '<div class="none">找不到這個詞的常用搭配，先把單字本身多唸幾次吧！</div>';
+      return;
+    }
+    phrases.forEach(p=>{
+      const row = document.createElement("div");
+      row.className = "phrase";
+      const t = document.createElement("span");
+      t.className = "ptext"; t.textContent = p;
+      const b = document.createElement("button");
+      b.className = "mini"; b.textContent = "🔊";
+      b.onclick = ev=>{ ev.stopPropagation(); speakText(p); };
+      row.append(t, b);
+      container.appendChild(row);
+    });
+  }catch(e){
+    container.innerHTML = '<div class="none">片語查詢需要網路連線，稍後再試。</div>';
+  }
+}
+/* 用 Datamuse（免費、免金鑰）查詢最常見的前後搭配詞，組成片語 */
+async function fetchPhrases(word){
+  const q = encodeURIComponent(word.toLowerCase().replace(/[^a-z'\-]/g,""));
+  if (!q) return [];
+  const [follows, precedes] = await Promise.all([
+    fetch(`https://api.datamuse.com/words?rel_bga=${q}&max=8`).then(r=>r.json()),
+    fetch(`https://api.datamuse.com/words?rel_bgb=${q}&max=8`).then(r=>r.json())
+  ]);
+  const okWord = s => /^[a-z'\-]+$/i.test(s);
+  const phrases = [];
+  follows.filter(x=>okWord(x.word)).slice(0,2).forEach(x=>phrases.push(word.toLowerCase()+" "+x.word));
+  precedes.filter(x=>okWord(x.word)).slice(0,2).forEach(x=>phrases.push(x.word+" "+word.toLowerCase()));
+  return phrases;
+}
+$("btnAgain").onclick = ()=>{ $("overlay").classList.remove("show"); btnReset.onclick(); };
+$("btnClose").onclick = ()=>{ $("overlay").classList.remove("show"); };
+
+/* ===================== 設定 ===================== */
+$("btnSettings").onclick = ()=> $("settings").classList.toggle("open");
+$("mergeSent").onchange = ()=> applyRows();
+$("tolerance").oninput = e=>{
+  const v=parseInt(e.target.value,10);
+  const label = v>=95 ? "嚴格" : v>=75 ? "標準" : "寬鬆";
+  $("toleranceVal").textContent = `${label} ${v}%`;
+};
+$("ttsRate").oninput = e=> $("ttsRateVal").textContent = e.target.value+"x";
+$("recLang").onchange = ()=>{
+  if (S.running){ // 換口音需重建辨識器
+    try{ S.rec.abort(); }catch(e){}
+    S.rec = buildRecognition();
+    try{ S.rec.start(); }catch(e){}
+  }
+};
+</script>
+</body>
+</html>
