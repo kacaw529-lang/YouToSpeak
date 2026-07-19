@@ -489,7 +489,12 @@ const HOMOPHONES = [
   ["by","buy","bye"],["see","sea"],["hear","here"],["know","no"],
   ["right","write"],["son","sun"],["wear","where"],["would","wood"],
   ["flower","flour"],["hour","our"],["meet","meat"],["new","knew"],
-  ["read","red"],["blue","blew"],["be","bee"],["I","eye","aye"]
+  ["read","red"],["blue","blew"],["be","bee"],["I","eye","aye"],
+  // 功能詞的辨識引擎常見轉寫變體：the 強讀 /ði/ 會被轉成 thee，
+  // a/an 弱化音常被轉成 uh/and 等
+  ["the","thee","da","de","duh"],
+  ["a","uh","ah","eh"],
+  ["an","and","en"]
 ].map(g=>g.map(x=>normalize(x)));
 function homophoneEqual(a,b){
   return HOMOPHONES.some(g => g.includes(a) && g.includes(b));
@@ -893,6 +898,8 @@ function buildRecognition(){
 }
 /* 回傳 1=成功前進, 0=不符 */
 const ARTICLES = new Set(["a","an","the"]);
+/* 語助詞：不比對、不記錯，直接忽略（先檢查是否符合目標，才會走到這裡） */
+const FILLERS = new Set(["um","umm","uhm","uh","uhh","er","erm","ah","ahh","hmm","hm","mmm","mm","mhm","mmhmm","huh"]);
 function tryConsume(rawSpoken, isFinal){
   const spoken = normalize(rawSpoken);
   if (!spoken) return 1; // 空token直接吃掉
@@ -915,6 +922,8 @@ function tryConsume(rawSpoken, isFinal){
     advance(S.words[S.idx]); // 對上的那個實詞
     return 1;
   }
+  // 語助詞（um、uh、hmm…）：吃掉但不前進、不記錯
+  if (FILLERS.has(spoken)) return 1;
   // 合併比對：上一個沒對到的詞 + 這個詞（處理 ice+cream=icecream、I+am=iam）
   if (S.lastFail && isMatch(S.lastFail + spoken, target.norm)){
     S.lastFail="";
@@ -932,6 +941,14 @@ function advance(w){
   S.idx++; S.lastFail="";
   paint(); updateHud();
 }
+/* 示範文字：冠詞連同下一個詞一起唸（教正確的節奏單位，如 "the sun"） */
+function demoTextFor(i){
+  const w = S.words[i];
+  if (w && ARTICLES.has(w.norm) && i+1 < lv().wordEnd){
+    return w.display + " " + S.words[i+1].display;
+  }
+  return w ? w.display : "";
+}
 function registerFail(w){
   w.attempts++;
   w.fails++;
@@ -941,7 +958,7 @@ function registerFail(w){
   if (w.attempts >= max){
     w.attempts = 0;
     w.gotHelp = true;
-    demonstrate(w.display);
+    demonstrate(demoTextFor(S.idx));
   }
   updateHud();
 }
@@ -1022,8 +1039,8 @@ function speakText(text){
   speechSynthesis.speak(u);
 }
 btnHear.onclick = ()=>{
-  const w=S.words[S.idx];
-  if (w) demonstrate(w.display);
+  const t = demoTextFor(S.idx);
+  if (t) demonstrate(t);
 };
 
 /* ===================== 練習流程 ===================== */
