@@ -864,6 +864,33 @@ function loadProgress(){
     return (d && typeof d==="object") ? d : null;
   }catch(e){ return null; }
 }
+/* 影子跟讀單位切塊：長句在標點處切成適合複誦的長度（工作記憶上限） */
+const CHUNK_MAX = 12, CHUNK_MIN = 5;
+function buildShadowChunks(block, div){
+  const chunks = [];
+  let wis = [], parts = [];
+  const flush = ()=>{
+    if (wis.length){
+      chunks.push({
+        wordStart: wis[0],
+        wordEnd:   wis[wis.length-1]+1,
+        el: div,
+        text: parts.join(" ").trim()
+      });
+    }
+    wis = []; parts = [];
+  };
+  block.segs.forEach(seg=>{
+    if (seg.type==="deco"){ parts.push(seg.text); return; }
+    wis.push(seg.wi);
+    const d = S.words[seg.wi].display;
+    parts.push(d);
+    if (wis.length >= CHUNK_MAX ||
+        (wis.length >= CHUNK_MIN && /[,;:—–…]["'”’)\]]*$/.test(d))) flush();
+  });
+  flush();
+  return chunks;
+}
 function render(){
   reader.innerHTML="";
   S.words.forEach(w=>{ w.el=null; });
@@ -872,14 +899,8 @@ function render(){
   S.blocks.slice(L.blockStart, L.blockEnd).forEach(block=>{
     const div=document.createElement("div");
     div.className="sent" + (block.segs.length ? "" : " blank");
-    const wis = block.segs.filter(s=>s.type==="word").map(s=>s.wi);
-    if (wis.length){
-      S.sentences.push({
-        wordStart: wis[0],
-        wordEnd:   wis[wis.length-1]+1,
-        el: div,
-        text: block.segs.map(s=> s.type==="word" ? S.words[s.wi].display : s.text).join(" ")
-      });
+    if (block.segs.some(s=>s.type==="word")){
+      buildShadowChunks(block, div).forEach(c=>S.sentences.push(c));
     }
     const en=document.createElement("div");
     en.className="en";
@@ -1175,7 +1196,11 @@ function shadowSentOf(wordIdx){
   const i = S.sentences.findIndex(s=> wordIdx>=s.wordStart && wordIdx<s.wordEnd);
   return i<0 ? 0 : i;
 }
-function clearShadowTimer(){ if (S.shadow.timer){ clearTimeout(S.shadow.timer); S.shadow.timer=null; } }
+function clearShadowTimer(){
+  if (S.shadow.timer){ clearTimeout(S.shadow.timer); S.shadow.timer=null; }
+  if (S.shadow.wd){ clearTimeout(S.shadow.wd); S.shadow.wd=null; }
+  if (S.shadow.ka){ clearInterval(S.shadow.ka); S.shadow.ka=null; }
+}
 function bumpShadowTimer(){
   clearShadowTimer();
   S.shadow.timer = setTimeout(()=>{
@@ -1205,10 +1230,16 @@ function shadowListen(sent){
   pauseRecording();
   speechSynthesis.cancel();
   liveText.textContent = "🔊 聽示範…";
+  const rate = parseFloat($("ttsRate").value);
   const u = new SpeechSynthesisUtterance(sent.text);
   u.lang = $("recLang").value;
-  u.rate = parseFloat($("ttsRate").value);
+  u.rate = rate;
+  let finished = false;
   const done = ()=>{
+    if (finished) return;
+    finished = true;
+    if (S.shadow.wd){ clearTimeout(S.shadow.wd); S.shadow.wd=null; }
+    if (S.shadow.ka){ clearInterval(S.shadow.ka); S.shadow.ka=null; }
     S.speaking = false;
     if (!S.running || S.mode!=="shadow") return;
     S.shadow.phase = "repeat";
@@ -1218,6 +1249,13 @@ function shadowListen(sent){
     bumpShadowTimer();
   };
   u.onend = done; u.onerror = done;
+  // 看門狗：依詞數估算播放時長，onend 沒觸發也能強制進入跟唸階段
+  const est = (sent.wordEnd - sent.wordStart) * 550 / rate + 1800;
+  S.shadow.wd = setTimeout(()=>{ speechSynthesis.cancel(); done(); }, est + 4000);
+  // Chrome 長句 15 秒中斷臭蟲防護：播放中定期 pause/resume 保活
+  S.shadow.ka = setInterval(()=>{
+    try{ speechSynthesis.pause(); speechSynthesis.resume(); }catch(e){}
+  }, 10000);
   speechSynthesis.speak(u);
 }
 /* 句子級消化：直接對上就前進；漏詞用前瞻對齊；不逐詞記錯 */
