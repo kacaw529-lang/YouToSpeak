@@ -272,6 +272,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
   <div class="spacer"></div>
   <button id="btnFile">📄 載入 TXT / SRT / XLSX</button>
   <button id="btnPaste">📋 貼上逐字稿</button>
+  <button id="btnPolish">🪄 AI 修飾</button>
   <button id="btnSample">✨ 載入範例</button>
   <button id="btnSettings">⚙️ 設定</button>
   <input type="file" id="fileInput" accept=".txt,.srt,.xlsx">
@@ -319,6 +320,19 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div class="hint">字幕檔常把一句話切成好幾列。開啟後會以句號、問號、驚嘆號重新併句，翻譯自動跟隨對應句子（斷點附近可能略有位移）。切換會重新開始目前進度。載入 XLSX / SRT 時預設開啟。</div>
     </div>
     <div class="setting">
+      <label>文本淨化</label>
+      <label style="font-weight:400;display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="cleanText" style="width:18px;height:18px;accent-color:var(--accent)">
+        載入時自動移除雜訊
+      </label>
+      <div class="hint">規則式清理：移除 [Music]、(laughs) 等背景註記、um / uh 語助詞、斷裂殘詞（th-）與相鄰結巴重複。字幕類來源預設開啟。</div>
+    </div>
+    <div class="setting">
+      <label for="geminiKey">Gemini API 金鑰（選填，供 🪄 AI 修飾）</label>
+      <input type="password" id="geminiKey" placeholder="AIza…" style="width:100%">
+      <div class="hint">AI 修飾能處理規則抓不到的雜訊（如跨句重複）。可於 Google AI Studio 免費申請；金鑰只儲存在此瀏覽器，不會上傳到任何伺服器。</div>
+    </div>
+    <div class="setting">
       <label for="recLang">辨識口音</label>
       <select id="recLang">
         <option value="en-US" selected>英語（美式 en-US）</option>
@@ -351,6 +365,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       </div>
       <button id="btnStart" class="primary" disabled>▶ 開始練習</button>
       <button id="btnHear" disabled>🔊 聽這個詞</button>
+      <button id="btnVoice" title="切換示範發音的聲音">👩 女聲</button>
       <button id="btnSkip" disabled>⏭ 跳過此詞</button>
       <button id="btnReset" class="danger-ghost" disabled>↺ 重新開始</button>
       <div id="micDot" title="麥克風狀態"></div>
@@ -412,7 +427,8 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
 const S = {
   words: [],        // {display, norm, el, status:'pending'|'done'|'helped'|'skipped', attempts, gotHelp}
   blocks: [],       // {segs:[{type:'word',wi}|{type:'deco',text}], zh:翻譯或null}
-  rawRows: [],      // 原始資料列（併句前），切換併句開關時重新處理用
+  rawRows: [],      // 處理後資料列（淨化/AI修飾後），切換併句開關時重新處理用
+  origRows: [],     // 原始資料列（未淨化），切換淨化開關時的資料來源
   sourceType: "",   // 'xlsx' | 'srt' | 'txt' | 'sample' | 'yt'
   levels: [],       // 關卡：{blockStart, blockEnd, wordStart, wordEnd}
   level: 0,         // 目前關卡索引
@@ -431,6 +447,7 @@ const S = {
   mode: "word",     // 'word' 逐詞挑戰 | 'shadow' 影子跟讀
   sentences: [],    // 本關句子清單：{wordStart, wordEnd, el, text}
   shadow: {sent:0, phase:"idle", attempts:0, timer:null}, // 影子模式回合狀態
+  voiceGender: "female", // 示範發音聲音：female | male
 };
 
 const $ = id => document.getElementById(id);
@@ -643,17 +660,56 @@ function parsePasted(text){
   return rows;
 }
 
-/* 統一入口：記住原始列，依來源決定併句預設，再進行處理 */
+/* 統一入口：記住原始列，依來源決定併句與淨化預設，再進行處理 */
 function setSource(rows, type){
-  S.rawRows = rows;
+  S.origRows = rows;
   S.sourceType = type;
-  $("mergeSent").checked = (type==="xlsx" || type==="srt" || type==="yt"); // 字幕類預設併句
+  const subtitleLike = (type==="xlsx" || type==="srt" || type==="yt");
+  $("mergeSent").checked = subtitleLike; // 字幕類預設併句
+  $("cleanText").checked = subtitleLike; // 字幕類預設淨化
+  refreshRawRows();
+}
+function refreshRawRows(){
+  const on = $("cleanText").checked;
+  S.rawRows = S.origRows.map(r=>({
+    en: on ? ruleClean(r.en||"") : (r.en||""),
+    zh: r.zh || null
+  }));
   applyRows();
 }
 function applyRows(){
   if (!S.rawRows.length) return;
   const rows = $("mergeSent").checked ? mergeRows(S.rawRows) : S.rawRows;
   loadRows(rows);
+}
+/* ===================== 規則式文本淨化 ===================== */
+function ruleClean(text){
+  let s = String(text);
+  // 背景音註記：[Music]、【音樂】、(laughs)、♪ 歌詞 ♪
+  s = s.replace(/\[[^\]]*\]|【[^】]*】|♪+[^♪\n]*♪+|♪+/g, " ");
+  s = s.replace(/\([^)]*\)/g, " ");
+  // 斷裂結巴殘詞：以連字號收尾的半個詞（th- / I-）
+  s = s.replace(/(^|\s)[A-Za-z]{1,6}-(?=\s|$)/g, " ");
+  const FILL = /^(u+m+|u+h+|er+m*|h+m+m*|mhm+)$/i;
+  const core = t => t.toLowerCase().replace(/[^a-z0-9']/g,"");
+  const out = [];
+  s.split(/\s+/).filter(Boolean).forEach(t=>{
+    const c = core(t);
+    if (FILL.test(c)){
+      // 語助詞帶句尾標點時，把標點移交給前一個詞，保住句界
+      const m = t.match(/[.!?]+$/);
+      if (m && out.length && !/[.!?]$/.test(out[out.length-1])){
+        out[out.length-1] = out[out.length-1].replace(/[,;:]+$/,"") + m[0];
+      }
+      return;
+    }
+    const prev = out[out.length-1];
+    // 相鄰結巴重複（why why）：兩側都不帶標點才視為結巴，
+    // 保留 "up, up, up" 這類刻意的文學重複
+    if (prev && c && core(prev)===c && !/[,.!?;:]/.test(prev) && !/[,.!?;:]/.test(t)) return;
+    out.push(t);
+  });
+  return out.join(" ").trim();
 }
 /* ===================== 跨列併句 ===================== */
 const NO_BREAK_ABBR = /^(mr|mrs|ms|dr|prof|st|vs|etc|no|jr|sr|e\.g|i\.e|a\.m|p\.m|u\.s|u\.k)\.$/i;
@@ -1145,6 +1201,48 @@ function discardRecording(){
 }
 
 /* ===================== TTS 示範發音 ===================== */
+/* 依名稱線索挑選男/女聲（瀏覽器語音清單沒有性別欄位，只能靠名稱判斷） */
+const VOICE_F = /\bfemale\b|samantha|zira|susan|aria|jenny|michelle|emma|joanna|salli|kimberly|ivy|kendra|karen|serena|moira|tessa|fiona|victoria|kate|hazel|libby|sonia|olivia|natasha|ava|allison|catherine|amber|clara|heather/i;
+const VOICE_M = /\bmale\b|david|mark|\bguy\b|daniel|alex|fred|james|george|ryan|thomas|oliver|aaron|matthew|justin|joey|brian|russell|liam|christopher|eric|andrew|william|nathan|kevin|connor/i;
+if ("speechSynthesis" in window){ speechSynthesis.onvoiceschanged = ()=>{}; speechSynthesis.getVoices(); }
+function pickVoice(gender){
+  if (!("speechSynthesis" in window)) return null;
+  const lang = $("recLang").value.toLowerCase();
+  const all = speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+  if (!all.length) return null;
+  const same = all.filter(v=>v.lang.replace("_","-").toLowerCase().startsWith(lang));
+  const pool = same.length ? same : all;
+  const want  = gender==="male" ? VOICE_M : VOICE_F;
+  const other = gender==="male" ? VOICE_F : VOICE_M;
+  const score = v=>{
+    let s=0;
+    if (want.test(v.name)) s+=100;        // 名稱明確符合目標性別
+    else if (!other.test(v.name)) s+=10;  // 性別不明者次之，避免挑到相反性別
+    if (/natural|neural|online|google/i.test(v.name)) s+=5; // 偏好高品質語音
+    if (v.lang.replace("_","-").toLowerCase()===lang) s+=3;
+    return s;
+  };
+  return pool.slice().sort((a,b)=>score(b)-score(a))[0] || null;
+}
+function makeUtterance(text){
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = $("recLang").value;
+  u.rate = parseFloat($("ttsRate").value);
+  const v = pickVoice(S.voiceGender);
+  if (v) u.voice = v;
+  return u;
+}
+function refreshVoiceBtn(){
+  $("btnVoice").textContent = S.voiceGender==="male" ? "👨 男聲" : "👩 女聲";
+}
+try{ S.voiceGender = localStorage.getItem("readaloud:voice") || "female"; }catch(e){}
+refreshVoiceBtn();
+$("btnVoice").onclick = ()=>{
+  S.voiceGender = S.voiceGender==="male" ? "female" : "male";
+  try{ localStorage.setItem("readaloud:voice", S.voiceGender); }catch(e){}
+  refreshVoiceBtn();
+  if (!S.running && !S.speaking) speakText("Hello! Nice to meet you."); // 立即試聽
+};
 function demonstrate(word){
   if (!("speechSynthesis" in window)) return;
   // 播音期間關閉辨識與錄音，避免電腦自己的聲音被聽進去、錄進去
@@ -1152,9 +1250,7 @@ function demonstrate(word){
   try{ S.rec && S.rec.abort(); }catch(e){}
   pauseRecording();
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(word.replace(/[^A-Za-z0-9'\- ]/g,""));
-  u.lang = $("recLang").value;
-  u.rate = parseFloat($("ttsRate").value);
+  const u = makeUtterance(word.replace(/[^A-Za-z0-9'\- ]/g,""));
   const done = ()=>{
     S.speaking = false;
     if (S.running){
@@ -1171,10 +1267,7 @@ function demonstrate(word){
 function speakText(text){
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = $("recLang").value;
-  u.rate = parseFloat($("ttsRate").value);
-  speechSynthesis.speak(u);
+  speechSynthesis.speak(makeUtterance(text));
 }
 btnHear.onclick = ()=>{
   if (S.mode==="shadow"){
@@ -1238,9 +1331,7 @@ function shadowListen(sent){
   speechSynthesis.cancel();
   liveText.textContent = "🔊 聽示範…";
   const rate = parseFloat($("ttsRate").value);
-  const u = new SpeechSynthesisUtterance(sent.text);
-  u.lang = $("recLang").value;
-  u.rate = rate;
+  const u = makeUtterance(sent.text);
   let finished = false;
   const done = ()=>{
     if (finished) return;
@@ -1572,6 +1663,65 @@ $("btnClose").onclick = ()=>{ closeOverlay(); };
 /* ===================== 設定 ===================== */
 $("btnSettings").onclick = ()=> $("settings").classList.toggle("open");
 $("mergeSent").onchange = ()=> applyRows();
+$("cleanText").onchange = ()=>{ if (S.origRows.length) refreshRawRows(); };
+
+/* ===================== AI 修飾（Gemini，選用） ===================== */
+try{ $("geminiKey").value = localStorage.getItem("readaloud:gemini_key") || ""; }catch(e){}
+$("btnPolish").onclick = async ()=>{
+  const key = $("geminiKey").value.trim();
+  if (!S.rawRows.length){ showNotice("請先載入文本，再進行 AI 修飾。"); return; }
+  if (!key){
+    $("settings").classList.add("open");
+    showNotice("AI 修飾需要 Gemini API 金鑰（可於 Google AI Studio 免費申請）。請在設定中填入後再試；金鑰只儲存在你這台電腦的瀏覽器。");
+    return;
+  }
+  try{ localStorage.setItem("readaloud:gemini_key", key); }catch(e){}
+  const rows = S.rawRows, B = 60;
+  $("btnPolish").disabled = true;
+  try{
+    for (let i=0; i<rows.length; i+=B){
+      liveText.textContent = `🪄 AI 修飾中… ${Math.min(i+B,rows.length)} / ${rows.length} 列`;
+      const batch = rows.slice(i, i+B).map(r=>r.en||"");
+      const cleaned = await geminiCleanBatch(key, batch);
+      if (Array.isArray(cleaned) && cleaned.length === batch.length){
+        cleaned.forEach((t,k)=>{ rows[i+k].en = String(t||""); });
+      } // 長度不符則保留該批原文，不冒險錯位
+    }
+    applyRows();
+    hideNotice();
+    liveText.textContent = "🪄 AI 修飾完成，文本已更新。";
+  }catch(err){
+    showNotice("AI 修飾失敗：" + err.message + "。請確認金鑰有效、額度未用盡且網路正常。");
+  }finally{
+    $("btnPolish").disabled = false;
+  }
+};
+async function geminiCleanBatch(key, batch){
+  const prompt =
+`你是英文字幕清理工具。請清理下方 JSON 陣列中的每一列英文字幕：
+1. 移除語助詞（um、uh、er、hmm、you know 之類的填充語）
+2. 移除口吃與結巴重複（如 "why why"、"work for 10 hours, work 10 hours" 只保留一次）
+3. 移除背景音註記（[Music]、[Laughter]、(laughs)、♪ 等）
+嚴格規則：不改寫、不翻譯、不增加任何內容；除刪除上述雜訊外，保留原句所有文字與標點；原本是空字串的列維持空字串；每一列獨立處理，不可把內容移到其他列。
+只回傳與輸入相同長度的 JSON 字串陣列，不要任何說明文字或 Markdown 標記。
+輸入：
+` + JSON.stringify(batch);
+  const res = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + encodeURIComponent(key),
+    {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        contents: [{parts:[{text: prompt}]}],
+        generationConfig: {temperature: 0}
+      })
+    }
+  );
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const text = (((data.candidates||[])[0]||{}).content||{}).parts?.map(p=>p.text||"").join("") || "";
+  return JSON.parse(text.replace(/```json|```/g,"").trim());
+}
 $("levelSize").oninput = e=> $("levelSizeVal").textContent = e.target.value + " 字";
 $("levelSize").onchange = ()=>{ if (S.rawRows.length) applyRows(); };
 $("tolerance").oninput = e=>{
