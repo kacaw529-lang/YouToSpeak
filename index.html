@@ -272,7 +272,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
   <div class="spacer"></div>
   <button id="btnFile">📄 載入 TXT / SRT / XLSX</button>
   <button id="btnPaste">📋 貼上逐字稿</button>
-  <button id="btnPolish">📝 AI 修飾</button>
+  <button id="btnPolish">🪄 AI 修飾</button>
   <button id="btnSample">✨ 載入範例</button>
   <button id="btnSettings">⚙️ 設定</button>
   <input type="file" id="fileInput" accept=".txt,.srt,.xlsx">
@@ -328,7 +328,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div class="hint">規則式清理：移除 [Music]、(laughs) 等背景註記、um / uh 語助詞、斷裂殘詞（th-）與相鄰結巴重複。字幕類來源預設開啟。</div>
     </div>
     <div class="setting">
-      <label for="geminiKey">Gemini API 金鑰（選填，供 📝 AI 修飾）</label>
+      <label for="geminiKey">Gemini API 金鑰（選填，供 🪄 AI 修飾）</label>
       <input type="password" id="geminiKey" placeholder="AIza…" style="width:100%">
       <div class="hint">AI 修飾能處理規則抓不到的雜訊（如跨句重複）。可於 Google AI Studio 免費申請；金鑰只儲存在此瀏覽器，不會上傳到任何伺服器。</div>
     </div>
@@ -921,32 +921,60 @@ function loadProgress(){
     return (d && typeof d==="object") ? d : null;
   }catch(e){ return null; }
 }
-/* 影子跟讀單位切塊：長句在標點處切成適合複誦的長度（工作記憶上限） */
+/* 影子跟讀單位切塊：標點優先、超長均分、避免結尾孤兒（如 12+1） */
 const CHUNK_MAX = 12, CHUNK_MIN = 5;
 function buildShadowChunks(block, div){
-  const chunks = [];
-  let wis = [], parts = [];
-  const flush = ()=>{
-    if (wis.length){
-      chunks.push({
-        wordStart: wis[0],
-        wordEnd:   wis[wis.length-1]+1,
-        el: div,
-        text: parts.join(" ").trim()
-      });
-    }
-    wis = []; parts = [];
-  };
+  // 蒐集詞（附掛其後的獨立標點裝飾）
+  const items = [];
   block.segs.forEach(seg=>{
-    if (seg.type==="deco"){ parts.push(seg.text); return; }
-    wis.push(seg.wi);
-    const d = S.words[seg.wi].display;
-    parts.push(d);
-    if (wis.length >= CHUNK_MAX ||
-        (wis.length >= CHUNK_MIN && /[,;:—–…]["'”’)\]]*$/.test(d))) flush();
+    if (seg.type==="word") items.push({wi:seg.wi, d:S.words[seg.wi].display, deco:[]});
+    else if (items.length) items[items.length-1].deco.push(seg.text);
   });
-  flush();
-  return chunks;
+  if (!items.length) return [];
+  // 第一階段：在標點處切段（累積至少 CHUNK_MIN 詞、且後面還有詞才切）
+  const spans = [];
+  let start = 0;
+  items.forEach((it,i)=>{
+    const punct = /[,;:—–…]["'”’)\]]*$/.test(it.d);
+    if (punct && (i-start+1) >= CHUNK_MIN && i < items.length-1){
+      spans.push([start, i+1]); start = i+1;
+    }
+  });
+  if (start < items.length) spans.push([start, items.length]);
+  // 第二階段：超過上限的段落均分（13 → 7+6，而不是 12+1）
+  const pieces = [];
+  spans.forEach(([a,b])=>{
+    const n = b - a;
+    if (n <= CHUNK_MAX){ pieces.push([a,b]); return; }
+    const parts = Math.ceil(n / CHUNK_MAX);
+    const size  = Math.ceil(n / parts);
+    for (let s=a; s<b; s+=size) pieces.push([s, Math.min(s+size, b)]);
+  });
+  // 第三階段：結尾過短的塊併回前塊；併了會超長就與前塊重新均分
+  for (let i=pieces.length-1; i>0; i--){
+    const n = pieces[i][1] - pieces[i][0];
+    if (n >= CHUNK_MIN) continue;
+    const prevN = pieces[i-1][1] - pieces[i-1][0];
+    if (prevN + n <= CHUNK_MAX + 2){
+      pieces[i-1][1] = pieces[i][1];
+      pieces.splice(i,1);
+    } else {
+      const a = pieces[i-1][0], b = pieces[i][1];
+      const size = Math.ceil((prevN+n)/2);
+      pieces[i-1] = [a, a+size];
+      pieces[i]   = [a+size, b];
+    }
+  }
+  // 產出跟讀單位
+  return pieces.map(([a,b])=>{
+    const seg = items.slice(a,b);
+    return {
+      wordStart: seg[0].wi,
+      wordEnd:   seg[seg.length-1].wi + 1,
+      el: div,
+      text: seg.map(it=>[it.d, ...it.deco].join(" ")).join(" ").trim()
+    };
+  });
 }
 function render(){
   reader.innerHTML="";
@@ -1042,9 +1070,15 @@ function buildRecognition(){
   rec.onstart = ()=>{ micDot.classList.add("live"); S.consumed={}; };
   rec.onend = ()=>{
     micDot.classList.remove("live");
-    // 練習進行中且不是在播示範音，就自動重啟（Chrome 靜音幾秒會自己停）
+    // 練習進行中且不是在播示範音，就自動重啟（Chrome 靜音幾秒會自己停）。
+    // 重要：條件必須在計時器「觸發當下」重新檢查——若此時已進入示範播放，
+    // 貿然重啟會讓麥克風聽見 TTS 自己唸的句子，造成句子被自動判完成。
     if (S.running && !S.speaking){
-      setTimeout(()=>{ try{ rec.start(); }catch(e){} }, 250);
+      setTimeout(()=>{
+        if (!S.running || S.speaking) return;
+        if (S.mode==="shadow" && S.shadow.phase!=="repeat") return;
+        try{ rec.start(); }catch(e){}
+      }, 250);
     }
   };
   rec.onerror = ev=>{
@@ -1233,7 +1267,7 @@ function makeUtterance(text){
   return u;
 }
 function refreshVoiceBtn(){
-  $("btnVoice").textContent = S.voiceGender==="male" ? "🧑 男聲" : "👧 女聲";
+  $("btnVoice").textContent = S.voiceGender==="male" ? "👨 男聲" : "👩 女聲";
 }
 try{ S.voiceGender = localStorage.getItem("readaloud:voice") || "female"; }catch(e){}
 refreshVoiceBtn();
@@ -1343,7 +1377,8 @@ function shadowListen(sent){
     S.shadow.phase = "repeat";
     liveText.textContent = "🗣 換你唸這一句！";
     startRecording();
-    setTimeout(()=>{ try{ S.rec.start(); }catch(e){} }, 250);
+    try{ S.rec && S.rec.abort(); }catch(e){} // 清掉任何殘存的辨識工作階段（含可能收進的示範語音）
+    setTimeout(()=>{ try{ S.rec.start(); }catch(e){} }, 300);
     bumpShadowTimer();
   };
   u.onend = done; u.onerror = done;
@@ -1680,7 +1715,7 @@ $("btnPolish").onclick = async ()=>{
   $("btnPolish").disabled = true;
   try{
     for (let i=0; i<rows.length; i+=B){
-      liveText.textContent = `📝 AI 修飾中… ${Math.min(i+B,rows.length)} / ${rows.length} 列`;
+      liveText.textContent = `🪄 AI 修飾中… ${Math.min(i+B,rows.length)} / ${rows.length} 列`;
       const batch = rows.slice(i, i+B).map(r=>r.en||"");
       const cleaned = await geminiCleanBatch(key, batch);
       if (Array.isArray(cleaned) && cleaned.length === batch.length){
@@ -1689,7 +1724,7 @@ $("btnPolish").onclick = async ()=>{
     }
     applyRows();
     hideNotice();
-    liveText.textContent = "📝 AI 修飾完成，文本已更新。";
+    liveText.textContent = "🪄 AI 修飾完成，文本已更新。";
   }catch(err){
     showNotice("AI 修飾失敗：" + err.message + "。請確認金鑰有效、額度未用盡且網路正常。");
   }finally{
