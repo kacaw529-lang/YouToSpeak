@@ -272,7 +272,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
   <div class="spacer"></div>
   <button id="btnFile">📄 載入 TXT / SRT / XLSX</button>
   <button id="btnPaste">📋 貼上逐字稿</button>
-  <button id="btnPolish">🪄 AI 修飾</button>
+  <button id="btnPolish">💻 AI 修飾</button>
   <button id="btnSample">✨ 載入範例</button>
   <button id="btnSettings">⚙️ 設定</button>
   <input type="file" id="fileInput" accept=".txt,.srt,.xlsx">
@@ -328,7 +328,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div class="hint">規則式清理：移除 [Music]、(laughs) 等背景註記、um / uh 語助詞、斷裂殘詞（th-）與相鄰結巴重複。字幕類來源預設開啟。</div>
     </div>
     <div class="setting">
-      <label for="geminiKey">Gemini API 金鑰（選填，供 🪄 AI 修飾）</label>
+      <label for="geminiKey">Gemini API 金鑰（選填，供 💻 AI 修飾）</label>
       <input type="password" id="geminiKey" placeholder="AIza…" style="width:100%">
       <div class="hint">AI 修飾能處理規則抓不到的雜訊（如跨句重複）。可於 Google AI Studio 免費申請；金鑰只儲存在此瀏覽器，不會上傳到任何伺服器。</div>
     </div>
@@ -1267,7 +1267,7 @@ function makeUtterance(text){
   return u;
 }
 function refreshVoiceBtn(){
-  $("btnVoice").textContent = S.voiceGender==="male" ? "👨 男聲" : "👩 女聲";
+  $("btnVoice").textContent = S.voiceGender==="male" ? "🧑 男聲" : "👧 女聲";
 }
 try{ S.voiceGender = localStorage.getItem("readaloud:voice") || "female"; }catch(e){}
 refreshVoiceBtn();
@@ -1717,7 +1717,7 @@ $("btnPolish").onclick = async ()=>{
   try{
     for (let i=0; i<rows.length; i+=B){
       const bi = Math.floor(i/B)+1;
-      liveText.textContent = `🪄 AI 修飾中… 第 ${bi}/${total} 批（${Math.min(i+B,rows.length)}/${rows.length} 列）`;
+      liveText.textContent = `💻 AI 修飾中… 第 ${bi}/${total} 批（${Math.min(i+B,rows.length)}/${rows.length} 列）`;
       const batch = rows.slice(i, i+B).map(r=>r.en||"");
       const cleaned = await geminiCleanBatch(key, batch, sec=>{
         liveText.textContent = `🪄 觸及免費層頻率限制，等待 ${sec} 秒後自動重試…（第 ${bi}/${total} 批）`;
@@ -1729,7 +1729,7 @@ $("btnPolish").onclick = async ()=>{
     }
     applyRows();
     hideNotice();
-    liveText.textContent = "🪄 AI 修飾完成，文本已更新。";
+    liveText.textContent = "💻 AI 修飾完成，文本已更新。";
   }catch(err){
     showNotice("AI 修飾失敗：" + err.message);
   }finally{
