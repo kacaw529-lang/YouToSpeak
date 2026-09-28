@@ -196,6 +196,21 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;padding:20px;g
 .pl:last-child{border-bottom:none}
 .pl .pz{font-size:.82rem;color:var(--ink-soft)}
 @media (max-width:640px){ .dlg-form{grid-template-columns:1fr} }
+/* 派送作業 */
+#hwLink{
+  width:100%;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:.78rem;line-height:1.5;
+  border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--ink);background:#F7F9FB;
+  word-break:break-all;margin-top:6px;
+}
+.hw-note{font-size:.8rem;color:var(--ink-soft);line-height:1.6;margin:4px 0 10px}
+.dlg-form .hw-check{flex-direction:row;align-items:center;gap:8px;font-weight:400}
+.dlg-form .hw-check input{width:18px;height:18px;accent-color:var(--accent)}
+#hwBanner{
+  width:100%;max-width:860px;background:#EEF4FB;border:1px solid #CFE0F3;border-radius:var(--radius);
+  padding:12px 18px;font-size:.9rem;line-height:1.7;
+}
+#hwBanner .hw-title{font-family:var(--display);font-weight:600;font-size:1.05rem}
+#hwBanner .hw-sub{color:var(--ink-soft);font-size:.8rem}
 /* 盲聽挑戰：尚未唸完的英文模糊化（中文翻譯保留作為意義鷹架） */
 #reader.blind .w:not(.done):not(.helped):not(.skipped):not(.missed):not(.partner){
   filter:blur(6px);user-select:none;
@@ -315,6 +330,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
   <button id="btnPaste">📋 貼上逐字稿</button>
   <button id="btnPolish">🪄 AI 修飾</button>
   <button id="btnDialog">💬 生成對話</button>
+  <button id="btnShare">🔗 派送作業</button>
   <button id="btnSample">✨ 載入範例</button>
   <button id="btnSettings">⚙️ 設定</button>
   <input type="file" id="fileInput" accept=".txt,.srt,.xlsx">
@@ -322,6 +338,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
 
 <main>
   <div id="notice"></div>
+  <div id="hwBanner" hidden></div>
 
   <section id="settings" class="stage" aria-label="設定">
     <div class="setting">
@@ -529,9 +546,37 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
     <div class="rc-actions">
       <button class="primary" id="btnDlgGen">✨ 生成對話</button>
       <button class="primary" id="btnDlgUse" hidden>▶ 載入練習</button>
+      <button id="btnDlgShare" hidden>🔗 派送作業</button>
       <button id="btnDlgSave" hidden>⬇ 下載對話稿</button>
       <button id="btnDlgSample">📄 範例對話</button>
       <button id="btnDlgClose">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div id="shareOverlay" class="modal-bg">
+  <div class="modal-card dlg-card">
+    <h2>🔗 派送作業連結</h2>
+    <div class="steps">把目前載入的內容和練習設定打包成一個連結。貼到 Google Classroom 或 LINE，學生點開就能直接練習，<b>不需要檔案，也不需要 Gemini 金鑰</b>。</div>
+    <div class="dlg-form">
+      <label class="full">作業名稱<input id="hwTitle"></label>
+      <label>練習模式
+        <select id="hwMode">
+          <option value="word">🎯 逐詞挑戰</option>
+          <option value="shadow">🗣 影子跟讀</option>
+          <option value="dialog">💬 對話演練</option>
+        </select>
+      </label>
+      <label id="hwRoleWrap">學生扮演<select id="hwRole"></select></label>
+      <label class="full hw-check"><input type="checkbox" id="hwBlind"> 開啟盲聽／脫稿挑戰</label>
+    </div>
+    <div class="hw-note">目前的比對彈性、每關字數、停頓秒數與併句設定會一併帶入。</div>
+    <textarea id="hwLink" readonly rows="3"></textarea>
+    <div class="hw-note" id="hwLen"></div>
+    <div class="rc-actions">
+      <button class="primary" id="btnHwCopy">📋 複製連結</button>
+      <button id="btnHwTest">🧪 試開連結</button>
+      <button id="btnHwClose">關閉</button>
     </div>
   </div>
 </div>
@@ -573,6 +618,7 @@ const S = {
   speakers: [],     // 對話中的說話者（依出場順序）
   myRole: "",       // 學生扮演的角色
   ttsToken: 0,      // 播放代號：被中斷的語音，其結束回呼一律作廢
+  title: "",        // 目前內容的名稱（派送作業用）
 };
 /* 句子型模式：影子跟讀與對話演練共用同一套「一回合一單位」引擎 */
 function isSent(){ return S.mode==="shadow" || S.mode==="dialog"; }
@@ -751,7 +797,7 @@ $("fileInput").onchange = e => {
   const r = new FileReader();
   if (/\.xlsx$/i.test(f.name)){
     r.onload = () => {
-      try{ setSource(parseXLSX(r.result), "xlsx"); }
+      try{ setSource(parseXLSX(r.result), "xlsx", baseName(f.name)); }
       catch(err){ showNotice("XLSX 讀取失敗：" + err.message + "。請確認是 Language Reactor 匯出的檔案，或另存為 .xlsx 後再試。"); }
     };
     r.readAsArrayBuffer(f);
@@ -760,7 +806,7 @@ $("fileInput").onchange = e => {
       let text = String(r.result);
       const isSrt = /\.srt$/i.test(f.name);
       if (isSrt) text = parseSRT(text);
-      setSource(text.split(/\r?\n/).map(line=>({en:line, zh:null})), isSrt ? "srt" : "txt");
+      setSource(text.split(/\r?\n/).map(line=>({en:line, zh:null})), isSrt ? "srt" : "txt", baseName(f.name));
     };
     r.readAsText(f, "UTF-8");
   }
@@ -777,7 +823,7 @@ $("btnPasteGo").onclick = ()=>{
   }
   $("pasteOverlay").classList.remove("show");
   $("pasteArea").value = "";
-  setSource(rows, "yt");
+  setSource(rows, "yt", "YouTube 逐字稿");
 };
 /* 解析 YouTube「顯示轉錄稿」複製格式：時間戳獨立成行或位於行首，一律剝除 */
 function parsePasted(text){
@@ -794,7 +840,9 @@ function parsePasted(text){
 }
 
 /* 統一入口：記住原始列，依來源決定併句與淨化預設，再進行處理 */
-function setSource(rows, type){
+function baseName(n){ return String(n||"").replace(/\.[^.]+$/,"") || "英語口說作業"; }
+function setSource(rows, type, title){
+  S.title = title || "英語口說作業";
   const d = detectDialogue(rows);
   S.isDialog = !!d;
   S.origRows = d ? d.rows : rows;
@@ -973,7 +1021,7 @@ $("btnSample").onclick = ()=> setSource([
   {en:"After 2 weeks, it had a big yellow flower.", zh:"兩個星期後，它開出一朵大大的黃花。"},
   {en:'The bees came to visit. "What a beautiful flower!" they said.', zh:"蜜蜂來拜訪：「好漂亮的花啊！」"},
   {en:"The little seed was not little anymore. It was happy.", zh:"小種子不再是小種子了。它很快樂。"}
-], "sample");
+], "sample", "The Little Seed");
 
 /* ===================== 建立閱讀畫面 ===================== */
 /* 共同入口：rows = [{en:英文句, zh:翻譯或null}] */
@@ -1085,10 +1133,21 @@ function hashText(s){
   for (let i=0;i<s.length;i++) h = ((h<<5)+h+s.charCodeAt(i))>>>0;
   return h.toString(36);
 }
-function todayTW(){
-  // 日期一律 yyyy-MM-dd、時區 Asia/Taipei
-  return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+/* 日期一律以 yyyy-MM-dd 純文字儲存、時區 Asia/Taipei。
+   讀取時寬容解析三種形態：乾淨字串（2026-09-28）、Date 物件、Date 長字串
+  （Mon Sep 28 2026 08:00:00 GMT+0800 (台北標準時間)）；無法辨識則回傳空字串 */
+function normalizeDateTW(v){
+  if (v == null || v === "") return "";
+  if (typeof v === "string"){
+    const m = v.trim().match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+    if (m) return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  }
+  const d = (v instanceof Date) ? v
+          : new Date(typeof v === "string" ? v.replace(/\s*\([^)]*\)\s*$/, "") : v);
+  if (isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
 }
+function todayTW(){ return normalizeDateTW(new Date()); }
 function saveProgress(){
   try{
     localStorage.setItem("readaloud:"+S.contentKey,
@@ -2328,6 +2387,7 @@ function renderDlgPreview(d){
   });
   $("btnDlgUse").hidden = false;
   $("btnDlgSave").hidden = false;
+  $("btnDlgShare").hidden = false;
   $("btnDlgGen").textContent = "🔄 重新生成";
   $("btnDlgGen").classList.remove("primary");
 }
@@ -2368,7 +2428,7 @@ $("btnDlgGen").onclick = async ()=>{
 $("btnDlgUse").onclick = ()=>{
   if (!dlgDraft) return;
   $("dlgOverlay").classList.remove("show");
-  setSource(dlgDraft.turns.map(t=>({en:t.en, zh:t.zh, spk:t.spk})), "dialog");
+  setSource(dlgDraft.turns.map(t=>({en:t.en, zh:t.zh, spk:t.spk})), "dialog", dlgDraft.title);
   liveText.textContent = `已載入「${dlgDraft.title}」。選好你要扮演的角色，按「開始練習」！`;
 };
 /* 下載對話稿：「角色: 台詞」＋下一行中文，可再用「載入 TXT」讀回 */
@@ -2383,6 +2443,152 @@ $("btnDlgSave").onclick = ()=>{
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
 };
+
+/* ===================== 派送作業（方案 A：內容放在網址 # 後面） =====================
+   # 後面的內容不會送到伺服器；使用瀏覽器內建壓縮，不需額外函式庫 */
+function b64url(u8){
+  let s = "";
+  for (let i=0; i<u8.length; i+=0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i+0x8000));
+  return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function unb64url(s){
+  s = s.replace(/-/g,"+").replace(/_/g,"/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s), u = new Uint8Array(bin.length);
+  for (let i=0; i<bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+async function packHW(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (window.CompressionStream){
+    try{
+      const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
+      return "z" + b64url(new Uint8Array(buf));      // z = 壓縮版
+    }catch(e){}
+  }
+  return "j" + b64url(bytes);                         // j = 未壓縮（舊瀏覽器後備）
+}
+async function unpackHW(code){
+  const kind = code[0];
+  let bytes = unb64url(code.slice(1));
+  if (kind === "z"){
+    bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+  } else if (kind !== "j"){
+    throw new Error("格式不符");
+  }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/* ---------- 老師端：產生連結 ---------- */
+function openShare(){
+  if (!S.rawRows.length){ showNotice("請先載入或生成要派送的內容，再產生作業連結。"); return; }
+  hideNotice();
+  $("hwTitle").value = S.title || "英語口說作業";
+  $("hwMode").querySelector('option[value="dialog"]').disabled = !S.isDialog;
+  $("hwMode").value = S.mode;
+  const sel = $("hwRole");
+  sel.innerHTML = "";
+  S.speakers.forEach(sp=>{ const o=document.createElement("option"); o.value=o.textContent=sp; sel.appendChild(o); });
+  if (S.myRole) sel.value = S.myRole;
+  $("hwBlind").checked = S.blind;
+  $("hwRoleWrap").hidden = $("hwMode").value !== "dialog";
+  $("shareOverlay").classList.add("show");
+  buildShareLink();
+}
+let shareSeq = 0;
+async function buildShareLink(){
+  const seq = ++shareSeq;
+  const mode = $("hwMode").value;
+  const p = {
+    v: 1,
+    t: $("hwTitle").value.trim() || "英語口說作業",
+    d: todayTW(),                                  // 派送日期（yyyy-MM-dd，Asia/Taipei）
+    m: mode,
+    r: mode==="dialog" ? $("hwRole").value : 0,
+    b: $("hwBlind").checked ? 1 : 0,
+    tol: +$("tolerance").value,
+    ls:  +$("levelSize").value,
+    sw:  +$("shadowWait").value,
+    mg: ($("mergeSent").checked && !S.isDialog) ? 1 : 0,
+    rows: S.rawRows.map(r=>[r.en, r.zh || 0, r.spk || 0])
+  };
+  const code = await packHW(p);
+  if (seq !== shareSeq) return;                    // 使用者又改了設定，舊結果作廢
+  const url = location.origin + location.pathname + "#hw=" + code;
+  $("hwLink").value = url;
+  const n = url.length;
+  let msg = `連結長度 ${n.toLocaleString()} 字元。`;
+  if (n > 8000)      msg += "⚠️ 內容太長，部分通訊軟體可能無法完整傳送。建議改派送較短的段落或對話。";
+  else if (n > 2000) msg += "連結偏長：貼到 Google Classroom 沒問題，LINE 偶爾會截斷，派送後請先自己點一次確認。";
+  else               msg += "長度適中，可直接貼到 Google Classroom 或 LINE。";
+  if (location.protocol === "file:"){
+    msg = "⚠️ 目前是從本機檔案開啟，這個連結只有這台電腦能用。請改從 GitHub Pages 網址開啟本工具後再產生連結。" + msg;
+  }
+  $("hwLen").textContent = msg;
+}
+$("btnShare").onclick = openShare;
+$("btnDlgShare").onclick = ()=>{ $("btnDlgUse").onclick(); openShare(); };
+$("hwTitle").oninput = buildShareLink;
+$("hwMode").onchange = ()=>{ $("hwRoleWrap").hidden = $("hwMode").value !== "dialog"; buildShareLink(); };
+$("hwRole").onchange = buildShareLink;
+$("hwBlind").onchange = buildShareLink;
+$("btnHwClose").onclick = ()=> $("shareOverlay").classList.remove("show");
+$("btnHwTest").onclick = ()=>{ const t=$("hwLink").value; if (t) window.open(t, "_blank"); };
+$("btnHwCopy").onclick = async ()=>{
+  const t = $("hwLink").value;
+  if (!t) return;
+  try{ await navigator.clipboard.writeText(t); }
+  catch(e){ $("hwLink").select(); try{ document.execCommand("copy"); }catch(_){} }
+  $("btnHwCopy").textContent = "✅ 已複製";
+  setTimeout(()=> $("btnHwCopy").textContent = "📋 複製連結", 1500);
+};
+
+/* ---------- 學生端：開啟連結自動載入 ---------- */
+const MODE_NAME = {word:"🎯 逐詞挑戰", shadow:"🗣 影子跟讀", dialog:"💬 對話演練"};
+async function loadHomeworkFromHash(){
+  const m = location.hash.match(/^#hw=([A-Za-z0-9_\-]+)$/);
+  if (!m) return;
+  let p;
+  try{ p = await unpackHW(m[1]); }catch(e){ p = null; }
+  if (!p || p.v !== 1 || !Array.isArray(p.rows) || !p.rows.length){
+    showNotice("這個作業連結無法讀取，可能在複製或轉傳時被截斷了。請向老師再要一次完整的連結。");
+    return;
+  }
+  // 先套用設定（分關字數與併句會影響切關與進度記憶）
+  if (p.tol){ $("tolerance").value = p.tol; $("tolerance").oninput({target:$("tolerance")}); }
+  if (p.ls){ $("levelSize").value = p.ls; $("levelSizeVal").textContent = p.ls + " 字"; }
+  if (p.sw){ $("shadowWait").value = p.sw; $("shadowWaitVal").textContent = p.sw + " 秒"; }
+  const rows = p.rows.map(r=>({en:String(r[0]||""), zh:r[1] || null, spk:r[2] || null}));
+  setSource(rows, "hw", String(p.t || "英語口說作業"));
+  if (p.mg && !S.isDialog){ $("mergeSent").checked = true; applyRows(); }
+  if (S.isDialog && p.r && S.speakers.includes(p.r)){ S.myRole = p.r; renderRoleSeg(); }
+  S.blind = !!p.b;
+  $("btnBlind").classList.toggle("on", S.blind);
+  const mode = (p.m==="dialog" && !S.isDialog) ? "shadow" : (MODE_NAME[p.m] ? p.m : "word");
+  setMode(mode);
+  showHwBanner(p, mode);
+}
+function showHwBanner(p, mode){
+  const b = $("hwBanner");
+  b.innerHTML = "";
+  const t = document.createElement("div");
+  t.className = "hw-title";
+  t.textContent = "📬 老師派送的作業：" + (p.t || "英語口說作業");
+  const d = document.createElement("div");
+  let desc = "練習方式：" + MODE_NAME[mode];
+  if (mode==="dialog" && S.myRole) desc += `，你扮演 ${S.myRole}`;
+  if (S.blind) desc += mode==="dialog" ? "，開啟脫稿挑戰" : "，開啟盲聽挑戰";
+  desc += "。按「▶ 開始練習」就能開始！";
+  d.textContent = desc;
+  const sub = document.createElement("div");
+  sub.className = "hw-sub";
+  const date = normalizeDateTW(p.d);
+  sub.textContent = (date ? `派送日期 ${date}．` : "") + "請用電腦或 Android 裝置的 Chrome／Edge 開啟（iPad、iPhone 無法使用語音辨識）。";
+  b.append(t, d, sub);
+  b.hidden = false;
+}
+window.addEventListener("hashchange", loadHomeworkFromHash);
+loadHomeworkFromHash();
 </script>
 </body>
 </html>
