@@ -167,6 +167,47 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;padding:20px;g
 .seg.on:hover{background:var(--accent-dark)}
 .w.missed{background:#FBE9EA;color:#B4444A}
 .w.chunkw{background:var(--hl-soft)}
+/* hidden 屬性一律生效（避免被 display:flex 等樣式覆蓋） */
+[hidden]{display:none !important}
+/* 對話：說話者標籤與對方台詞 */
+.spk{
+  display:inline-block;font-family:var(--display);font-size:.8rem;font-weight:600;
+  padding:2px 10px;border-radius:99px;margin-right:8px;vertical-align:middle;
+}
+.spk0{background:#E3EEFB;color:#2B5C99}
+.spk1{background:#FBE8EF;color:#9A3A5E}
+.spk.me{box-shadow:0 0 0 2px var(--hl)}
+.w.partner{background:#EDF2F7;color:#4A6076}
+#roleSeg{display:flex;align-items:center;flex:none;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#roleSeg .role-lab{font-size:.8rem;font-weight:700;color:var(--ink-soft);padding:0 10px}
+/* AI 生成對話彈窗 */
+.dlg-card{max-width:620px;max-height:90vh;overflow-y:auto}
+.dlg-form{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:12px}
+.dlg-form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:700}
+.dlg-form .full{grid-column:1 / -1}
+.dlg-form input,.dlg-form select,.dlg-form textarea{
+  font-family:var(--body);font-size:.9rem;font-weight:400;color:var(--ink);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fff;
+}
+#dlgPreview{margin-bottom:14px}
+#dlgPreview .msg{font-size:.88rem;color:var(--ink-soft);padding:8px 0}
+#dlgPreview h3{font-family:var(--display);font-weight:600;font-size:1.05rem;margin-bottom:8px}
+.pl{padding:6px 0;border-bottom:1px dashed var(--line);font-size:.95rem;line-height:1.6}
+.pl:last-child{border-bottom:none}
+.pl .pz{font-size:.82rem;color:var(--ink-soft)}
+@media (max-width:640px){ .dlg-form{grid-template-columns:1fr} }
+/* 盲聽挑戰：尚未唸完的英文模糊化（中文翻譯保留作為意義鷹架） */
+#reader.blind .w:not(.done):not(.helped):not(.skipped):not(.missed):not(.partner){
+  filter:blur(6px);user-select:none;
+}
+#btnBlind.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.flu-row{display:flex;gap:12px;margin:6px 0 8px}
+.flu-num{flex:1;background:#EEF4FB;border-radius:12px;padding:10px 12px;text-align:center}
+.flu-num span{font-family:var(--display);font-size:1.5rem;font-weight:600;color:var(--accent)}
+.flu-num small{display:block;font-size:.75rem;color:var(--ink-soft)}
+.clip{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.clip:last-child{border-bottom:none}
+.clip .ctext{flex:1;font-size:.88rem;line-height:1.5}
 .sent.active{
   background:#FFFBE8;border-radius:10px;
   box-shadow:inset 4px 0 0 var(--hl);
@@ -272,7 +313,8 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
   <div class="spacer"></div>
   <button id="btnFile">📄 載入 TXT / SRT / XLSX</button>
   <button id="btnPaste">📋 貼上逐字稿</button>
-  <button id="btnPolish">💻 AI 修飾</button>
+  <button id="btnPolish">🪄 AI 修飾</button>
+  <button id="btnDialog">💬 生成對話</button>
   <button id="btnSample">✨ 載入範例</button>
   <button id="btnSettings">⚙️ 設定</button>
   <input type="file" id="fileInput" accept=".txt,.srt,.xlsx">
@@ -312,6 +354,22 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div class="hint">長文自動切成多個關卡，並在句子結尾處分段。國小建議 120～180 字（約 2～3 分鐘）。調整後會重新分關，本篇星等紀錄會清除。</div>
     </div>
     <div class="setting">
+      <label for="shadowWait">影子跟讀：停頓幾秒後結算</label>
+      <div class="range-row">
+        <input type="range" id="shadowWait" min="2" max="8" step="1" value="4">
+        <span class="range-val" id="shadowWaitVal">4 秒</span>
+      </div>
+      <div class="hint">學生停止出聲多久後判定本句唸完。低年級開口前常需要較長思考時間，建議 5～6 秒。</div>
+    </div>
+    <div class="setting">
+      <label>對話演練</label>
+      <label style="font-weight:400;display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="dlgModelFirst" style="width:18px;height:18px;accent-color:var(--accent)">
+        輪到我說時，先聽一次示範
+      </label>
+      <div class="hint">預設關閉：像真實對話一樣直接開口，說不好才自動示範。初次練習或低年級建議開啟。</div>
+    </div>
+    <div class="setting">
       <label for="mergeSent">自動併句</label>
       <label style="font-weight:400;display:flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="mergeSent" style="width:18px;height:18px;accent-color:var(--accent)">
@@ -328,7 +386,7 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div class="hint">規則式清理：移除 [Music]、(laughs) 等背景註記、um / uh 語助詞、斷裂殘詞（th-）與相鄰結巴重複。字幕類來源預設開啟。</div>
     </div>
     <div class="setting">
-      <label for="geminiKey">Gemini API 金鑰（選填，供 💻 AI 修飾）</label>
+      <label for="geminiKey">Gemini API 金鑰（選填，供 🪄 AI 修飾）</label>
       <input type="password" id="geminiKey" placeholder="AIza…" style="width:100%">
       <div class="hint">AI 修飾能處理規則抓不到的雜訊（如跨句重複）。可於 Google AI Studio 免費申請；金鑰只儲存在此瀏覽器，不會上傳到任何伺服器。</div>
     </div>
@@ -362,7 +420,10 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div id="modeSeg">
         <button class="seg on" data-m="word">🎯 逐詞挑戰</button>
         <button class="seg" data-m="shadow">🗣 影子跟讀</button>
+        <button class="seg" data-m="dialog" id="segDialog" disabled title="載入對話稿（如 Amy: Hello!）或用「💬 生成對話」後可使用">💬 對話演練</button>
       </div>
+      <div id="roleSeg" hidden></div>
+      <button id="btnBlind" hidden title="隱藏尚未唸完的英文，只靠耳朵跟讀">🙈 盲聽挑戰</button>
       <button id="btnStart" class="primary" disabled>▶ 開始練習</button>
       <button id="btnHear" disabled>🔊 聽這個詞</button>
       <button id="btnVoice" title="切換示範發音的聲音">👩 女聲</button>
@@ -384,6 +445,19 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
       <div class="cell ok"><div class="num" id="rOk">0</div><div class="lab">一次唸對</div></div>
       <div class="cell help"><div class="num" id="rHelp">0</div><div class="lab">聽了示範</div></div>
       <div class="cell skip"><div class="num" id="rSkip">0</div><div class="lab">跳過</div></div>
+    </div>
+    <div class="rc-section" id="fluBox" hidden>
+      <h3>⏱ 朗讀流暢度</h3>
+      <div class="flu-row">
+        <div class="flu-num"><span id="fluWpm">0</span><small>詞／分鐘</small></div>
+        <div class="flu-num"><span id="fluPause">0</span><small>次猶豫停頓</small></div>
+      </div>
+      <div class="sub2" id="fluTip"></div>
+    </div>
+    <div class="rc-section" id="clipBox" hidden>
+      <h3>🔁 逐句對比：先聽示範，再聽自己</h3>
+      <div class="sub2">按「對比」會連續播放示範與你的錄音，仔細聽節奏、重音和語調哪裡不一樣。</div>
+      <div id="clipList"></div>
     </div>
     <div class="rc-section" id="playbackBox" hidden>
       <h3>🎧 聽聽自己的朗讀</h3>
@@ -419,6 +493,49 @@ footer{padding:10px 22px 18px;text-align:center;font-size:.75rem;color:var(--ink
   </div>
 </div>
 
+<div id="dlgOverlay" class="modal-bg">
+  <div class="modal-card dlg-card">
+    <h2>💬 AI 生成情境對話</h2>
+    <div class="steps">指定主題與程度，AI 會寫出<b>貼近真實口語</b>的對話（自然的縮寫、簡短回應、真實情境用語），並附台灣慣用的中文翻譯。需先在「⚙️ 設定」填入 Gemini 金鑰。</div>
+    <div class="dlg-form">
+      <label class="full">主題情境
+        <input id="dlgTopic" placeholder="例：在早餐店點餐、下課邀同學打球、問路去圖書館">
+      </label>
+      <label>程度
+        <select id="dlgLevel">
+          <option value="kids">小學英檢（GEPT Kids）｜CEFR Pre-A1～A1</option>
+          <option value="elem" selected>全民英檢 初級｜CEFR A2</option>
+          <option value="inter">全民英檢 中級｜CEFR B1</option>
+          <option value="hiint">全民英檢 中高級｜CEFR B2</option>
+          <option value="adv">全民英檢 高級｜CEFR C1</option>
+          <option value="sup">全民英檢 優級｜CEFR C2</option>
+        </select>
+      </label>
+      <label>對話長度
+        <select id="dlgTurns">
+          <option value="6">6 句</option>
+          <option value="8" selected>8 句</option>
+          <option value="10">10 句</option>
+          <option value="12">12 句</option>
+        </select>
+      </label>
+      <label>角色 A（選填）<input id="dlgRoleA" placeholder="例：Amy"></label>
+      <label>角色 B（選填）<input id="dlgRoleB" placeholder="例：店員／Clerk"></label>
+      <label class="full">目標句型／單字（選填）
+        <textarea id="dlgTarget" rows="2" placeholder="例：Can I have...? / How much is it? / sandwich, juice"></textarea>
+      </label>
+    </div>
+    <div id="dlgPreview"></div>
+    <div class="rc-actions">
+      <button class="primary" id="btnDlgGen">✨ 生成對話</button>
+      <button class="primary" id="btnDlgUse" hidden>▶ 載入練習</button>
+      <button id="btnDlgSave" hidden>⬇ 下載對話稿</button>
+      <button id="btnDlgSample">📄 範例對話</button>
+      <button id="btnDlgClose">關閉</button>
+    </div>
+  </div>
+</div>
+
 <footer>建議使用電腦版 Chrome 或 Edge，並允許麥克風權限。語音辨識需連接網路。</footer>
 
 <script>
@@ -448,7 +565,23 @@ const S = {
   sentences: [],    // 本關句子清單：{wordStart, wordEnd, el, text}
   shadow: {sent:0, phase:"idle", attempts:0, timer:null}, // 影子模式回合狀態
   voiceGender: "female", // 示範發音聲音：female | male
+  blind: false,     // 盲聽挑戰（僅影子模式生效）
+  flu: {ms:0, n:0, pauses:0, last:0}, // 流暢度量測
+  chunkRec: null,   // 影子模式逐句錄音器
+  clips: {},        // 影子模式逐句錄音：句索引 -> {url, text}
+  isDialog: false,  // 目前文本是否為對話稿
+  speakers: [],     // 對話中的說話者（依出場順序）
+  myRole: "",       // 學生扮演的角色
+  ttsToken: 0,      // 播放代號：被中斷的語音，其結束回呼一律作廢
 };
+/* 句子型模式：影子跟讀與對話演練共用同一套「一回合一單位」引擎 */
+function isSent(){ return S.mode==="shadow" || S.mode==="dialog"; }
+/* 對話角色配音：第 1、3 位說話者用目前選的聲音，第 2、4 位用另一種，兩人聽起來才有區別 */
+function genderFor(spk){
+  const i = S.speakers.indexOf(spk);
+  if (i < 0) return S.voiceGender;
+  return i % 2 === 0 ? S.voiceGender : (S.voiceGender==="male" ? "female" : "male");
+}
 
 const $ = id => document.getElementById(id);
 const reader=$("reader"), liveText=$("liveText"), micDot=$("micDot"),
@@ -662,25 +795,72 @@ function parsePasted(text){
 
 /* 統一入口：記住原始列，依來源決定併句與淨化預設，再進行處理 */
 function setSource(rows, type){
-  S.origRows = rows;
+  const d = detectDialogue(rows);
+  S.isDialog = !!d;
+  S.origRows = d ? d.rows : rows;
+  S.speakers = d ? d.speakers : [];
   S.sourceType = type;
   const subtitleLike = (type==="xlsx" || type==="srt" || type==="yt");
-  $("mergeSent").checked = subtitleLike; // 字幕類預設併句
-  $("cleanText").checked = subtitleLike; // 字幕類預設淨化
+  $("mergeSent").checked = subtitleLike && !S.isDialog; // 字幕類預設併句（對話稿不併，否則會跨角色黏句）
+  $("cleanText").checked = subtitleLike;                // 字幕類預設淨化
+  if (S.isDialog && !S.speakers.includes(S.myRole)){
+    S.myRole = S.speakers[1] || S.speakers[0];          // 預設扮演第二位，讓系統先開口示範情境
+  }
+  refreshModeUI();
+  // 先決定模式再渲染：對話稿自動進入對話演練，非對話稿離開對話演練
+  if (S.isDialog) setMode("dialog", true);
+  else if (S.mode==="dialog") setMode("word", true);
   refreshRawRows();
 }
 function refreshRawRows(){
   const on = $("cleanText").checked;
   S.rawRows = S.origRows.map(r=>({
     en: on ? ruleClean(r.en||"") : (r.en||""),
-    zh: r.zh || null
+    zh: r.zh || null,
+    spk: r.spk || null
   }));
   applyRows();
 }
 function applyRows(){
   if (!S.rawRows.length) return;
-  const rows = $("mergeSent").checked ? mergeRows(S.rawRows) : S.rawRows;
+  const merge = $("mergeSent").checked && !S.isDialog;
+  const rows = merge ? mergeRows(S.rawRows) : S.rawRows;
   loadRows(rows);
+}
+/* ===================== 對話稿偵測 =====================
+   支援「Amy: Hello!」格式；緊接在台詞後的中文行視為該句翻譯 */
+const SPK_RE = /^\s*([A-Za-z][A-Za-z0-9 .'\-]{0,24}?)\s*[:：]\s*(.+)$/;
+function isMostlyCJK(s){
+  return (s.match(/[\u3400-\u9fff]/g)||[]).length > (s.match(/[A-Za-z]/g)||[]).length;
+}
+function detectDialogue(rows){
+  // 已結構化（AI 生成）的對話直接採用
+  if (rows.some(r=>r.spk)){
+    const sp=[]; rows.forEach(r=>{ if (r.spk && !sp.includes(r.spk)) sp.push(r.spk); });
+    return sp.length>=2 ? {rows, speakers:sp} : null;
+  }
+  const out=[], sp=[];
+  let labeled=0, enLines=0;
+  rows.forEach(r=>{
+    const line = String(r.en||"").trim();
+    if (!line){ out.push({en:"", zh:null, spk:null}); return; }
+    const m = line.match(SPK_RE);
+    if (m && !/^https?$/i.test(m[1].trim())){
+      const name = m[1].trim();
+      labeled++; enLines++;
+      if (!sp.includes(name)) sp.push(name);
+      out.push({en:m[2].trim(), zh:r.zh||null, spk:name});
+      return;
+    }
+    if (isMostlyCJK(line)){
+      const prev = [...out].reverse().find(x=>x.en);
+      if (prev && !prev.zh){ prev.zh = line.replace(/^[（(]\s*|\s*[）)]$/g,""); return; }
+    }
+    enLines++;
+    out.push({en:line, zh:r.zh||null, spk:null});
+  });
+  if (sp.length<2 || sp.length>4 || labeled<4 || labeled/Math.max(1,enLines) < 0.6) return null;
+  return {rows:out, speakers:sp};
 }
 /* ===================== 規則式文本淨化 ===================== */
 function ruleClean(text){
@@ -814,7 +994,7 @@ function loadRows(rows){
         segs.push({type:"deco", text:tok}); // 純標點或符號，僅顯示
       }
     });
-    S.blocks.push({segs, zh:row.zh||null});
+    S.blocks.push({segs, zh:row.zh||null, spk:row.spk||null});
   });
   render();
   if (!S.words.length){
@@ -866,6 +1046,8 @@ function initLevels(){
 function setLevel(i){
   stopSession(true);
   discardRecording();
+  clearClips();
+  fluReset();
   S.level = Math.max(0, Math.min(i, S.levels.length-1));
   const L = lv();
   for (let w=L.wordStart; w<L.wordEnd; w++){
@@ -985,10 +1167,27 @@ function render(){
     const div=document.createElement("div");
     div.className="sent" + (block.segs.length ? "" : " blank");
     if (block.segs.some(s=>s.type==="word")){
-      buildShadowChunks(block, div).forEach(c=>S.sentences.push(c));
+      if (S.mode==="dialog"){
+        // 對話演練：一輪台詞就是一個回合單位，不切塊
+        const wis = block.segs.filter(s=>s.type==="word").map(s=>s.wi);
+        S.sentences.push({
+          wordStart: wis[0], wordEnd: wis[wis.length-1]+1, el: div, spk: block.spk || null,
+          text: block.segs.map(s=> s.type==="word" ? S.words[s.wi].display : s.text).join(" ")
+        });
+      } else {
+        buildShadowChunks(block, div).forEach(c=>{ c.spk = block.spk || null; S.sentences.push(c); });
+      }
     }
     const en=document.createElement("div");
     en.className="en";
+    if (block.spk){
+      const tag=document.createElement("span");
+      const si = S.speakers.indexOf(block.spk);
+      const mine = S.mode==="dialog" && block.spk===S.myRole;
+      tag.className = "spk spk" + (si % 2) + (mine ? " me" : "");
+      tag.textContent = block.spk + (mine ? "（我）" : "");
+      en.appendChild(tag);
+    }
     block.segs.forEach(seg=>{
       if (seg.type==="deco"){
         const sp=document.createElement("span");
@@ -1021,27 +1220,31 @@ function paint(){
   const L = lv();
   // 影子模式：標示目前跟讀單位（不論是否已按開始）
   let chunk = null;
-  if (S.mode==="shadow" && S.sentences.length){
+  if (isSent() && S.sentences.length){
     chunk = S.sentences[Math.min(S.shadow.sent, S.sentences.length-1)] || null;
   }
   S.sentences.forEach(s=> s.el.classList.toggle("active", !!chunk && s.el===chunk.el));
-  S.words.forEach((w,i)=>{
-    if (!w.el) return; // 不在本關畫面上的詞
+  reader.classList.toggle("blind", S.blind && isSent());
+  // 效能：只走訪本關範圍的詞（全文可能兩千多詞，每次推進都全掃會浪費）
+  for (let i=L.wordStart; i<L.wordEnd; i++){
+    const w = S.words[i];
+    if (!w || !w.el) continue;
     w.el.className="w";
     if (i===S.idx && S.idx<L.wordEnd) w.el.classList.add("current");
     else if (w.status==="done") w.el.classList.add("done");
     else if (w.status==="helped") w.el.classList.add("helped");
     else if (w.status==="skipped") w.el.classList.add("skipped");
     else if (w.status==="missed") w.el.classList.add("missed");
+    else if (w.status==="partner") w.el.classList.add("partner");
     else if (chunk && i>=chunk.wordStart && i<chunk.wordEnd) w.el.classList.add("chunkw");
-  });
+  }
   const cur=S.words[S.idx];
   if (cur && cur.el) cur.el.scrollIntoView({block:"center", behavior:"smooth"});
   const span = L.wordEnd - L.wordStart;
   progressFill.style.width = (span ? ((S.idx-L.wordStart)/span*100) : 0) + "%";
 }
 function jumpTo(i){
-  if (S.mode==="shadow"){
+  if (isSent()){
     const si = shadowSentOf(i);
     if (S.running){
       shadowEnterSentence(si);
@@ -1076,7 +1279,7 @@ function buildRecognition(){
     if (S.running && !S.speaking){
       setTimeout(()=>{
         if (!S.running || S.speaking) return;
-        if (S.mode==="shadow" && S.shadow.phase!=="repeat") return;
+        if (isSent() && S.shadow.phase!=="repeat") return;
         try{ rec.start(); }catch(e){}
       }, 250);
     }
@@ -1090,7 +1293,7 @@ function buildRecognition(){
   };
   rec.onresult = ev=>{
     let latest="";
-    const consumeFn = (S.mode==="shadow") ? shadowConsume : tryConsume;
+    const consumeFn = (isSent()) ? shadowConsume : tryConsume;
     for (let i=ev.resultIndex; i<ev.results.length; i++){
       const res = ev.results[i];
       const transcript = res[0].transcript.trim();
@@ -1106,7 +1309,7 @@ function buildRecognition(){
       S.consumed[i]=ptr;
     }
     if (latest) liveText.textContent = "🎧 " + latest;
-    if (S.mode!=="shadow" && S.idx >= lv().wordEnd) finishSession();
+    if (!isSent() && S.idx >= lv().wordEnd) finishSession();
   };
   return rec;
 }
@@ -1167,6 +1370,7 @@ function tryConsume(rawSpoken, isFinal){
 function advance(w){
   w.status = w.gotHelp ? "helped" : "done";
   S.idx++; S.lastFail="";
+  fluTick();
   paint(); updateHud();
 }
 /* 示範文字：冠詞連同下一個詞一起唸（教正確的節奏單位，如 "the sun"） */
@@ -1234,6 +1438,74 @@ function discardRecording(){
   if (S.mediaUrl){ URL.revokeObjectURL(S.mediaUrl); S.mediaUrl = null; }
 }
 
+/* ===================== 流暢度量測 =====================
+   只累計「學生連續開口」的時間：示範播放、暫停都會中斷計時；
+   單一間隔上限 3 秒（避免發呆拉低數據），超過 2 秒記為一次猶豫停頓 */
+function fluReset(){ S.flu = {ms:0, n:0, pauses:0, last:0}; }
+function fluBreak(){ S.flu.last = 0; }
+function fluTick(){
+  const now = performance.now();
+  if (S.flu.last){
+    const gap = now - S.flu.last;
+    S.flu.ms += Math.min(gap, 3000);
+    S.flu.n++;
+    if (gap > 2000) S.flu.pauses++;
+  }
+  S.flu.last = now;
+}
+function fluWpm(){ return S.flu.ms > 0 ? Math.round(S.flu.n / (S.flu.ms/60000)) : 0; }
+
+/* ===================== 影子模式逐句錄音 ===================== */
+const clipAudio = new Audio();
+function chunkRecStart(){
+  chunkRecStop(null);
+  if (!S.mediaStream || !window.MediaRecorder) return;
+  try{
+    const r = new MediaRecorder(S.mediaStream);
+    const parts = [];
+    r.ondataavailable = e=>{ if (e.data && e.data.size) parts.push(e.data); };
+    r.start();
+    S.chunkRec = {r, parts};
+  }catch(e){}
+}
+/* save：要保存到的句索引；null 表示丟棄 */
+function chunkRecStop(save){
+  const c = S.chunkRec;
+  S.chunkRec = null;
+  if (!c) return;
+  const text = (save!=null && S.sentences[save]) ? S.sentences[save].text : "";
+  const gender = (save!=null && S.sentences[save]) ? voiceOf(S.sentences[save]) : S.voiceGender;
+  c.r.onstop = ()=>{
+    if (save==null || !c.parts.length) return;
+    const blob = new Blob(c.parts, {type: c.r.mimeType || "audio/webm"});
+    const old = S.clips[save];
+    if (old) URL.revokeObjectURL(old.url);
+    S.clips[save] = {url: URL.createObjectURL(blob), text, gender};
+  };
+  try{ if (c.r.state !== "inactive") c.r.stop(); }catch(e){}
+}
+function clearClips(){
+  chunkRecStop(null);
+  Object.values(S.clips).forEach(c=>{ try{ URL.revokeObjectURL(c.url); }catch(e){} });
+  S.clips = {};
+}
+function stopAllAudio(){
+  try{ clipAudio.pause(); }catch(e){}
+  try{ $("playback").pause(); }catch(e){}
+  try{ speechSynthesis.cancel(); }catch(e){}
+}
+function playClip(url){
+  stopAllAudio();
+  clipAudio.src = url;
+  clipAudio.play().catch(()=>{});
+}
+function playCompare(text, url, gender){
+  stopAllAudio();
+  const u = makeUtterance(text, gender);
+  u.onend = ()=>{ setTimeout(()=>playClip(url), 350); }; // 示範結束稍停，再播自己的
+  speechSynthesis.speak(u);
+}
+
 /* ===================== TTS 示範發音 ===================== */
 /* 依名稱線索挑選男/女聲（瀏覽器語音清單沒有性別欄位，只能靠名稱判斷） */
 const VOICE_F = /\bfemale\b|samantha|zira|susan|aria|jenny|michelle|emma|joanna|salli|kimberly|ivy|kendra|karen|serena|moira|tessa|fiona|victoria|kate|hazel|libby|sonia|olivia|natasha|ava|allison|catherine|amber|clara|heather/i;
@@ -1258,16 +1530,16 @@ function pickVoice(gender){
   };
   return pool.slice().sort((a,b)=>score(b)-score(a))[0] || null;
 }
-function makeUtterance(text){
+function makeUtterance(text, gender){
   const u = new SpeechSynthesisUtterance(text);
   u.lang = $("recLang").value;
   u.rate = parseFloat($("ttsRate").value);
-  const v = pickVoice(S.voiceGender);
+  const v = pickVoice(gender || S.voiceGender);
   if (v) u.voice = v;
   return u;
 }
 function refreshVoiceBtn(){
-  $("btnVoice").textContent = S.voiceGender==="male" ? "🧑 男聲" : "👧 女聲";
+  $("btnVoice").textContent = S.voiceGender==="male" ? "👨 男聲" : "👩 女聲";
 }
 try{ S.voiceGender = localStorage.getItem("readaloud:voice") || "female"; }catch(e){}
 refreshVoiceBtn();
@@ -1281,6 +1553,7 @@ function demonstrate(word){
   if (!("speechSynthesis" in window)) return;
   // 播音期間關閉辨識與錄音，避免電腦自己的聲音被聽進去、錄進去
   S.speaking = true;
+  fluBreak(); // 示範期間不列入學生的朗讀時間
   try{ S.rec && S.rec.abort(); }catch(e){}
   pauseRecording();
   speechSynthesis.cancel();
@@ -1298,16 +1571,20 @@ function demonstrate(word){
   speechSynthesis.speak(u);
 }
 /* 結果畫面用：單純唸出文字，不涉及練習狀態 */
-function speakText(text){
+function speakText(text, gender){
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
-  speechSynthesis.speak(makeUtterance(text));
+  speechSynthesis.speak(makeUtterance(text, gender));
 }
+/* 目前單位該用的聲音：對話演練依角色配音，其他模式用目前選的聲音 */
+function voiceOf(sent){ return (S.mode==="dialog" && sent) ? genderFor(sent.spk) : S.voiceGender; }
 btnHear.onclick = ()=>{
-  if (S.mode==="shadow"){
+  if (isSent()){
     const sent = S.sentences[Math.min(S.shadow.sent, S.sentences.length-1)];
     if (!sent) return;
     if (S.running){
+      // 對方的台詞：整輪重播
+      if (S.mode==="dialog" && sent.spk!==S.myRole){ shadowEnterSentence(S.shadow.sent); return; }
       // 重聽本句：重置本句進度後重播示範（不計入嘗試次數）
       for (let w=sent.wordStart; w<sent.wordEnd; w++){
         if (S.words[w].status!=="pending") S.words[w].status="pending";
@@ -1316,7 +1593,7 @@ btnHear.onclick = ()=>{
       paint();
       shadowListen(sent);
     } else {
-      speakText(sent.text);
+      speakText(sent.text, voiceOf(sent));
     }
     return;
   }
@@ -1335,11 +1612,12 @@ function clearShadowTimer(){
   if (S.shadow.wd){ clearTimeout(S.shadow.wd); S.shadow.wd=null; }
   if (S.shadow.ka){ clearInterval(S.shadow.ka); S.shadow.ka=null; }
 }
-function bumpShadowTimer(){
+function bumpShadowTimer(first){
   clearShadowTimer();
+  const wait = (parseInt($("shadowWait").value,10) || 4) * 1000 + (first ? 1500 : 0);
   S.shadow.timer = setTimeout(()=>{
-    if (S.running && S.mode==="shadow" && S.shadow.phase==="repeat") evaluateSentence();
-  }, 4000); // 停頓 4 秒視為本次嘗試結束
+    if (S.running && isSent() && S.shadow.phase==="repeat") evaluateSentence();
+  }, wait); // 停頓超過設定秒數視為本次嘗試結束（剛換你唸時多給一點開口時間）
 }
 function shadowEnterSentence(i, keepAttempts){
   const sent = S.sentences[i];
@@ -1354,36 +1632,45 @@ function shadowEnterSentence(i, keepAttempts){
   S.idx = sent.wordStart; S.lastFail="";
   sent.el.classList.add("active");
   paint(); updateHud();
+  if (S.mode==="dialog"){
+    if (sent.spk !== S.myRole){ partnerSpeak(sent); return; }  // 對方的台詞：系統說
+    if ($("dlgModelFirst").checked){ shadowListen(sent); return; } // 設定：輪到我時先聽示範
+    // 預設：像真實對話一樣直接開口（唸不好時才自動示範）
+    clearShadowTimer(); chunkRecStop(null); fluBreak();
+    S.ttsToken++; speechSynthesis.cancel(); // 作廢可能還在播的對方台詞
+    S.speaking = false;
+    try{ S.rec && S.rec.abort(); }catch(e){}
+    beginRepeat(sent);
+    return;
+  }
   shadowListen(sent);
 }
-function shadowListen(sent){
+/* 受保護的 TTS 播放：播放期間關閉辨識與錄音，並有看門狗與防中斷保活 */
+function ttsGuarded(text, gender, nWords, onDone){
   clearShadowTimer();
+  chunkRecStop(null); // 播放期間絕不錄進逐句錄音
+  fluBreak();
   S.shadow.phase = "listen";
   S.speaking = true;
   try{ S.rec && S.rec.abort(); }catch(e){}
   pauseRecording();
+  const token = ++S.ttsToken;   // 先換代號再取消，被取消的舊語音回呼就不會誤觸推進
   speechSynthesis.cancel();
-  liveText.textContent = "🔊 聽示範…";
   const rate = parseFloat($("ttsRate").value);
-  const u = makeUtterance(sent.text);
+  const u = makeUtterance(text, gender);
   let finished = false;
   const done = ()=>{
-    if (finished) return;
+    if (finished || token !== S.ttsToken) return;
     finished = true;
     if (S.shadow.wd){ clearTimeout(S.shadow.wd); S.shadow.wd=null; }
     if (S.shadow.ka){ clearInterval(S.shadow.ka); S.shadow.ka=null; }
     S.speaking = false;
-    if (!S.running || S.mode!=="shadow") return;
-    S.shadow.phase = "repeat";
-    liveText.textContent = "🗣 換你唸這一句！";
-    startRecording();
-    try{ S.rec && S.rec.abort(); }catch(e){} // 清掉任何殘存的辨識工作階段（含可能收進的示範語音）
-    setTimeout(()=>{ try{ S.rec.start(); }catch(e){} }, 300);
-    bumpShadowTimer();
+    if (!S.running || !isSent()) return;
+    onDone();
   };
   u.onend = done; u.onerror = done;
-  // 看門狗：依詞數估算播放時長，onend 沒觸發也能強制進入跟唸階段
-  const est = (sent.wordEnd - sent.wordStart) * 550 / rate + 1800;
+  // 看門狗：依詞數估算播放時長，onend 沒觸發也能強制往下走
+  const est = nWords * 550 / rate + 1800;
   S.shadow.wd = setTimeout(()=>{ speechSynthesis.cancel(); done(); }, est + 4000);
   // Chrome 長句 15 秒中斷臭蟲防護：播放中定期 pause/resume 保活
   S.shadow.ka = setInterval(()=>{
@@ -1391,11 +1678,47 @@ function shadowListen(sent){
   }, 10000);
   speechSynthesis.speak(u);
 }
+function shadowListen(sent){
+  liveText.textContent = "🔊 聽示範…";
+  ttsGuarded(sent.text, voiceOf(sent), sent.wordEnd - sent.wordStart, ()=>beginRepeat(sent));
+}
+/* 進入跟唸（或輪到我說）階段 */
+function beginRepeat(sent){
+  S.shadow.phase = "repeat";
+  if (S.mode==="dialog"){
+    liveText.textContent = S.blind ? `🗣 輪到你（${sent.spk}）！脫稿說說看` : `🗣 輪到你（${sent.spk}）說！`;
+  } else {
+    liveText.textContent = S.blind ? "🗣 換你唸！（盲聽：靠耳朵記住剛剛那句）" : "🗣 換你唸這一句！";
+  }
+  startRecording().then(()=>{
+    // 麥克風就緒後才開逐句錄音；此時若已離開跟唸階段就不開
+    if (S.running && isSent() && S.shadow.phase==="repeat") chunkRecStart();
+  });
+  try{ S.rec && S.rec.abort(); }catch(e){} // 清掉任何殘存的辨識工作階段（含可能收進的示範語音）
+  setTimeout(()=>{
+    if (!S.running || S.speaking || S.shadow.phase!=="repeat") return;
+    try{ S.rec.start(); }catch(e){}
+  }, 300);
+  bumpShadowTimer(true);
+}
+/* 對方（或旁白）的台詞：系統用該角色的聲音說完，自動輪到下一句 */
+function partnerSpeak(sent){
+  liveText.textContent = `💬 ${sent.spk || "旁白"}：${sent.text}`;
+  ttsGuarded(sent.text, voiceOf(sent), sent.wordEnd - sent.wordStart, ()=>{
+    for (let w=sent.wordStart; w<sent.wordEnd; w++) S.words[w].status = "partner";
+    sent.el.classList.remove("active");
+    S.idx = sent.wordEnd;
+    paint(); updateHud();
+    if (S.shadow.sent+1 >= S.sentences.length){ finishSession(); return; }
+    // 稍停一下再換人，像真實對話的換手間隔
+    setTimeout(()=>{ if (S.running && S.mode==="dialog") shadowEnterSentence(S.shadow.sent+1); }, 400);
+  });
+}
 /* 句子級消化：直接對上就前進；漏詞用前瞻對齊；不逐詞記錯 */
 function shadowConsume(rawSpoken, isFinal){
   const spoken = normalize(rawSpoken);
   if (!spoken) return 1;
-  if (S.mode!=="shadow" || S.shadow.phase!=="repeat") return 1;
+  if (!isSent() || S.shadow.phase!=="repeat") return 1;
   const sent = curSent();
   if (!sent || S.idx >= sent.wordEnd) return 1;
   bumpShadowTimer();
@@ -1429,6 +1752,7 @@ function shadowConsume(rawSpoken, isFinal){
   return 0; // 暫時結果不符 → 等修正
 }
 function shadowAfterAdvance(sent){
+  fluTick();
   paint(); updateHud();
   if (S.idx >= sent.wordEnd) evaluateSentence();
 }
@@ -1436,6 +1760,8 @@ function evaluateSentence(){
   clearShadowTimer();
   const sent = curSent();
   if (!sent) return;
+  chunkRecStop(S.shadow.sent); // 保存本句最新一次的跟唸錄音（重試會覆蓋舊的）
+  fluBreak();
   const range = S.words.slice(sent.wordStart, sent.wordEnd);
   const done = range.filter(w=>w.status==="done").length;
   const ratio = done / range.length;
@@ -1477,7 +1803,7 @@ btnStart.onclick = ()=>{
   btnStart.textContent = "⏸ 暫停";
   btnStart.classList.remove("primary");
   S.rec = buildRecognition();
-  if (S.mode==="shadow"){
+  if (isSent()){
     shadowEnterSentence(shadowSentOf(S.idx)); // 由聽示範開始，錄音與辨識在示範結束後啟動
   } else {
     startRecording();
@@ -1489,6 +1815,8 @@ function stopSession(silent){
   S.running=false; S.speaking=false;
   clearShadowTimer();
   S.shadow.phase="idle";
+  chunkRecStop(null);
+  fluBreak();
   try{ S.rec && S.rec.abort(); }catch(e){}
   speechSynthesis.cancel();
   pauseRecording();
@@ -1498,13 +1826,15 @@ function stopSession(silent){
   if(!silent) liveText.textContent="已暫停，按「開始練習」繼續。";
 }
 btnSkip.onclick = ()=>{
-  if (S.mode==="shadow"){
+  if (isSent()){
     const sent = curSent();
     if (!sent) return;
     clearShadowTimer();
-    speechSynthesis.cancel(); S.speaking=false;
+    S.ttsToken++; speechSynthesis.cancel(); S.speaking=false;
+    const skipSt = (S.mode==="dialog" && sent.spk!==S.myRole) ? "partner" : "skipped";
+    chunkRecStop(null);
     for (let w=sent.wordStart; w<sent.wordEnd; w++){
-      if (S.words[w].status!=="done") S.words[w].status="skipped";
+      if (S.words[w].status!=="done") S.words[w].status=skipSt;
     }
     sent.el.classList.remove("active");
     S.idx = sent.wordEnd;
@@ -1528,34 +1858,77 @@ function updateHud(){
   if(!S.words.length){ stats.textContent=""; return; }
   const L = lv();
   const levelPart = S.levels.length>1 ? `第 ${S.level+1}/${S.levels.length} 關 ・ ` : "";
-  if (S.mode==="shadow" && S.sentences.length){
-    stats.textContent = levelPart + `第 ${Math.min(S.shadow.sent+1,S.sentences.length)} / ${S.sentences.length} 句`;
+  if (isSent() && S.sentences.length){
+    stats.textContent = levelPart + `第 ${Math.min(S.shadow.sent+1,S.sentences.length)} / ${S.sentences.length} ${S.mode==="dialog" ? "輪" : "句"}`;
     return;
   }
   stats.textContent = levelPart + `進度 ${Math.max(0, Math.min(S.idx,L.wordEnd)-L.wordStart)} / ${L.wordEnd-L.wordStart}`;
 }
 /* 模式切換 */
+const MODE_HINT = {
+  word:   "逐詞挑戰：按開始後唸出黃色標記的詞。",
+  shadow: "影子跟讀：按開始後先聽整句示範，再跟著唸。",
+  dialog: "對話演練：選好你扮演的角色後按開始，系統說對方的台詞，輪到你時直接開口。"
+};
+function setMode(m, silent){
+  if (m==="dialog" && !S.isDialog) return;
+  S.mode = m;
+  document.querySelectorAll("#modeSeg .seg").forEach(b=>b.classList.toggle("on", b.dataset.m===m));
+  btnSkip.textContent = m==="dialog" ? "⏭ 跳過這輪" : m==="shadow" ? "⏭ 跳過此句" : "⏭ 跳過此詞";
+  btnHear.textContent = isSent() ? "🔊 再聽這句" : "🔊 聽這個詞";
+  $("btnBlind").hidden = !isSent();
+  $("btnBlind").textContent = m==="dialog" ? "🙈 脫稿挑戰" : "🙈 盲聽挑戰";
+  $("roleSeg").hidden = m!=="dialog";
+  if (!silent && S.words.length){
+    setLevel(S.level);
+    liveText.textContent = MODE_HINT[m];
+  }
+}
 document.querySelectorAll("#modeSeg .seg").forEach(btn=>{
-  btn.onclick = ()=>{
-    const m = btn.dataset.m;
-    if (m === S.mode) return;
-    S.mode = m;
-    document.querySelectorAll("#modeSeg .seg").forEach(b=>b.classList.toggle("on", b.dataset.m===m));
-    btnSkip.textContent = m==="shadow" ? "⏭ 跳過此句" : "⏭ 跳過此詞";
-    btnHear.textContent = m==="shadow" ? "🔊 再聽這句" : "🔊 聽這個詞";
-    if (S.words.length){
-      setLevel(S.level);
-      liveText.textContent = m==="shadow"
-        ? "影子跟讀：按開始後先聽整句示範，再跟著唸。"
-        : "逐詞挑戰：按開始後唸出黃色標記的詞。";
-    }
-  };
+  btn.onclick = ()=>{ if (btn.dataset.m !== S.mode) setMode(btn.dataset.m); };
 });
+/* 對話模式可用與否、角色選擇器 */
+function refreshModeUI(){
+  $("segDialog").disabled = !S.isDialog;
+  $("segDialog").title = S.isDialog ? "" : "載入對話稿（如 Amy: Hello!）或用「💬 生成對話」後可使用";
+  renderRoleSeg();
+}
+function renderRoleSeg(){
+  const box = $("roleSeg");
+  box.innerHTML = "";
+  const lab = document.createElement("span");
+  lab.className = "role-lab"; lab.textContent = "我扮演";
+  box.appendChild(lab);
+  S.speakers.forEach(sp=>{
+    const b = document.createElement("button");
+    b.className = "seg" + (sp===S.myRole ? " on" : "");
+    b.textContent = sp;
+    b.onclick = ()=>{
+      if (sp===S.myRole) return;
+      S.myRole = sp;
+      renderRoleSeg();
+      setLevel(S.level);
+      liveText.textContent = `換你扮演 ${sp}！按「開始練習」出發。`;
+    };
+    box.appendChild(b);
+  });
+}
+/* 盲聽／脫稿挑戰：隱藏尚未唸完的英文（中文翻譯保留） */
+$("btnBlind").onclick = ()=>{
+  S.blind = !S.blind;
+  $("btnBlind").classList.toggle("on", S.blind);
+  paint();
+  const name = S.mode==="dialog" ? "脫稿挑戰" : "盲聽挑戰";
+  liveText.textContent = S.blind
+    ? `🙈 ${name}開啟：英文會先藏起來，說完才揭曉。想不起來就按「再聽這句」。`
+    : `${name}已關閉。`;
+};
 function finishSession(){
   stopSession(true);
   progressFill.style.width="100%";
   const L = lv();
-  const range = S.words.slice(L.wordStart, L.wordEnd);
+  // 對話演練只統計「我」的台詞；對方台詞由系統說，不列入
+  const range = S.words.slice(L.wordStart, L.wordEnd).filter(w=>w.status!=="partner");
   const ok   = range.filter(w=>w.status==="done").length;
   const help = range.filter(w=>w.status==="helped").length;
   const skip = range.filter(w=>w.status==="skipped").length;
@@ -1578,6 +1951,9 @@ function finishSession(){
   }
   $("encourage").textContent = msg;
   buildStuckCards(range);
+  renderFluency();
+  $("clipBox").hidden = true;
+  if (isSent()) setTimeout(renderClips, 500); // 逐句錄音收尾是非同步的，稍候再列出
   $("btnNext").hidden = isLast;
   // 錄音需要非同步收尾，先開啟結果畫面，錄音就緒後再顯示播放器
   $("playbackBox").hidden = true;
@@ -1590,6 +1966,44 @@ function finishSession(){
     $("playbackBox").hidden = false;
   });
   $("overlay").classList.add("show");
+}
+function renderFluency(){
+  const box = $("fluBox");
+  if (S.flu.n < 8){ box.hidden = true; return; } // 樣本太少不具參考性
+  const wpm = fluWpm(), pauses = S.flu.pauses;
+  $("fluWpm").textContent = wpm;
+  $("fluPause").textContent = pauses;
+  let tip;
+  if (wpm < 50)       tip = "先求穩再求快。下次試著「一口氣唸完一個片語」，不要一個字一個字停下來。";
+  else if (wpm < 90)  tip = "節奏很穩定！試試影子跟讀，跟著示範的速度把句子唸得更連貫。";
+  else if (wpm < 130) tip = "語流很順暢，已經接近自然對話的速度了！挑戰看看「盲聽挑戰」。";
+  else                tip = "速度很快！記得快之外也要清楚——用逐句對比聽聽自己的重音和語調。";
+  if (pauses >= 5) tip += `這關有 ${pauses} 次停頓超過 2 秒，停下來的地方通常就是還不熟的詞，可以先用學習卡練熟。`;
+  $("fluTip").textContent = tip;
+  box.hidden = false;
+}
+function renderClips(){
+  const keys = Object.keys(S.clips).map(Number).sort((a,b)=>a-b);
+  const list = $("clipList");
+  list.innerHTML = "";
+  if (!keys.length){ $("clipBox").hidden = true; return; }
+  keys.forEach(k=>{
+    const c = S.clips[k];
+    const row = document.createElement("div");
+    row.className = "clip";
+    const t = document.createElement("span");
+    t.className = "ctext"; t.textContent = c.text;
+    const bCmp = document.createElement("button");
+    bCmp.className = "mini"; bCmp.textContent = "🔁 對比";
+    bCmp.title = "先播示範，再播你的錄音";
+    bCmp.onclick = ()=> playCompare(c.text, c.url, c.gender);
+    const bMe = document.createElement("button");
+    bMe.className = "mini"; bMe.textContent = "🎙 我的";
+    bMe.onclick = ()=> playClip(c.url);
+    row.append(t, bCmp, bMe);
+    list.appendChild(row);
+  });
+  $("clipBox").hidden = false;
 }
 function encourageMsg(spoken, total, pct){
   if (pct >= 90) return `太厲害了！你完整開口唸出了 ${spoken} 個英文單字，幾乎全部一次過關。這樣的表現連老師都要拍手！🌟`;
@@ -1687,10 +2101,12 @@ async function fetchPhrases(word){
 }
 function closeOverlay(){
   $("overlay").classList.remove("show");
-  const p = $("playback");
-  try{ p.pause(); }catch(e){}
-  try{ speechSynthesis.cancel(); }catch(e){} // 停掉學習卡正在唸的詞或片語
+  stopAllAudio(); // 整段回放、逐句錄音、學習卡朗讀一律停止
 }
+$("playback").addEventListener("play", ()=>{
+  try{ clipAudio.pause(); }catch(e){}
+  try{ speechSynthesis.cancel(); }catch(e){}
+});
 $("btnAgain").onclick = ()=>{ closeOverlay(); setLevel(S.level); };
 $("btnNext").onclick  = ()=>{ closeOverlay(); setLevel(S.level+1); liveText.textContent=`進入第 ${S.level+1} 關，按「開始練習」出發！`; };
 $("btnClose").onclick = ()=>{ closeOverlay(); };
@@ -1717,7 +2133,7 @@ $("btnPolish").onclick = async ()=>{
   try{
     for (let i=0; i<rows.length; i+=B){
       const bi = Math.floor(i/B)+1;
-      liveText.textContent = `💻 AI 修飾中… 第 ${bi}/${total} 批（${Math.min(i+B,rows.length)}/${rows.length} 列）`;
+      liveText.textContent = `🪄 AI 修飾中… 第 ${bi}/${total} 批（${Math.min(i+B,rows.length)}/${rows.length} 列）`;
       const batch = rows.slice(i, i+B).map(r=>r.en||"");
       const cleaned = await geminiCleanBatch(key, batch, sec=>{
         liveText.textContent = `🪄 觸及免費層頻率限制，等待 ${sec} 秒後自動重試…（第 ${bi}/${total} 批）`;
@@ -1729,7 +2145,7 @@ $("btnPolish").onclick = async ()=>{
     }
     applyRows();
     hideNotice();
-    liveText.textContent = "💻 AI 修飾完成，文本已更新。";
+    liveText.textContent = "🪄 AI 修飾完成，文本已更新。";
   }catch(err){
     showNotice("AI 修飾失敗：" + err.message);
   }finally{
@@ -1740,7 +2156,8 @@ function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 /* 模型後備鏈：清理字幕屬輕量任務，優先用免費額度最寬的 Flash-Lite */
 const GEMINI_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"];
 let geminiModel = ""; // 本次會話記住可用的模型
-async function geminiCall(key, prompt, onWait){
+async function geminiCall(key, prompt, onWait, opts){
+  opts = opts || {};
   const models = geminiModel ? [geminiModel] : GEMINI_MODELS;
   let lastMsg = "未知錯誤";
   for (const model of models){
@@ -1750,7 +2167,9 @@ async function geminiCall(key, prompt, onWait){
     for (let a=0; a<=waits.length; a++){
       const res = await fetch(url, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0}})
+        body: JSON.stringify({contents:[{parts:[{text:prompt}]}], generationConfig: Object.assign(
+          {temperature: opts.temperature ?? 0},
+          opts.json ? {responseMimeType:"application/json"} : {})})
       });
       if (res.ok){ geminiModel = model; return res.json(); }
       let body=""; try{ body = await res.text(); }catch(e){}
@@ -1794,6 +2213,7 @@ async function geminiCleanBatch(key, batch, onWait){
   return JSON.parse(text.replace(/```json|```/g,"").trim());
 }
 $("levelSize").oninput = e=> $("levelSizeVal").textContent = e.target.value + " 字";
+$("shadowWait").oninput = e=> $("shadowWaitVal").textContent = e.target.value + " 秒";
 $("levelSize").onchange = ()=>{ if (S.rawRows.length) applyRows(); };
 $("tolerance").oninput = e=>{
   const v=parseInt(e.target.value,10);
@@ -1807,6 +2227,161 @@ $("recLang").onchange = ()=>{
     S.rec = buildRecognition();
     try{ S.rec.start(); }catch(e){}
   }
+};
+
+/* ===================== AI 生成情境對話 ===================== */
+/* 程度依全民英檢（GEPT）分級，附 CEFR 對應；小學英檢供國小學生使用 */
+const DLG_LEVELS = {
+  kids:  "GEPT Kids (Taiwan's elementary-school English test), CEFR Pre-A1 to A1. Learners are elementary school children. 3-8 words per turn. Only very high-frequency words and formulaic chunks from the elementary curriculum; simple present, can / can't, basic wh-questions.",
+  elem:  "GEPT Elementary (初級), CEFR A2, roughly the level of a Taiwan junior high school graduate. Speaking target: can introduce oneself and hold simple conversations on everyday topics such as greetings, shopping, asking the way and daily routines. 4-12 words per turn. High-frequency everyday vocabulary; simple present and past, be going to / will, can, basic comparatives.",
+  inter: "GEPT Intermediate (中級), CEFR B1, roughly the level of a Taiwan senior high school graduate. Speaking target: can talk about daily life, experiences, plans and opinions with simple reasons, and handle most everyday situations. 6-16 words per turn. Present perfect, modals, simple conditionals, common phrasal verbs.",
+  hiint: "GEPT High-Intermediate (中高級), CEFR B2, roughly a Taiwan university graduate not majoring in English. Speaking target: can discuss familiar and some abstract topics, give and justify opinions, compare options and negotiate. Up to 20 words per turn. Wide range of structures, natural collocations and common idiomatic expressions.",
+  adv:   "GEPT Advanced (高級), CEFR C1, roughly a Taiwan university graduate majoring in English. Speaking target: fluent, precise and nuanced; can hedge, persuade, clarify and handle complex or professional topics. Natural turn length.",
+  sup:   "GEPT Superior (優級), CEFR C2, close to a highly educated native speaker. Speaking target: effortless, idiomatic and subtle, with shifts in tone and register. Natural turn length."
+};
+function buildDialogPrompt(o){
+  return `You are an experienced EFL materials writer for learners in Taiwan. Write a short spoken dialogue for speaking practice.
+
+Situation / topic: ${o.topic}
+Learner level: ${DLG_LEVELS[o.level]}
+Length: exactly ${o.turns} turns. Two speakers take turns, starting with speaker A.
+Speaker A: ${o.roleA || "choose a simple, common English first name"}
+Speaker B: ${o.roleB || "choose a simple, common English first name, or a role word such as Clerk if the situation needs one"}
+${o.target ? "Target language to include naturally (use each item at least once, adapting grammar to fit): " + o.target : ""}
+
+Make it sound like real people talking in this situation, not a textbook drill:
+- Use natural contractions (I'm, it's, don't, let's, what's, that's).
+- Answer the way real speakers do. Short answers and reactions are fine (Sure! / Yeah. / Oh, nice! / No problem. / Sounds good. / Really?). Do not repeat the whole question in the answer.
+- Every turn must respond to the previous one. Include natural moves such as greeting, asking, reacting, checking or confirming, thanking and closing.
+- Use expressions people actually say in this situation (for example at a shop: "Can I get...?", "For here or to go?", "Here you go.").
+- When it fits the topic, set the scene somewhere familiar to learners in Taiwan (breakfast shop, convenience store, school, night market, MRT, office).
+- Keep it friendly and appropriate for the learners' age and level. No rude or dated slang and no idioms above the level.
+- No fillers (um, uh), stage directions, sound effects, emojis or narration.
+- Use simple, common names that speech recognition handles well.
+- Speaker labels must be short English names or role words. If a role above is written in Chinese, translate it into a short English word (店員 -> Clerk).
+
+For each turn also give "zh": a natural Traditional Chinese translation as used in Taiwan, translating the meaning rather than word by word.
+
+Return only JSON in exactly this shape:
+{"title": "short Traditional Chinese title", "turns": [{"speaker": "Amy", "en": "...", "zh": "..."}]}`;
+}
+/* 驗證並整理 AI 回傳：說話者標籤必須是英文（下載的對話稿才能再被正確讀回） */
+function validDialog(d){
+  if (!d || !Array.isArray(d.turns)) return null;
+  const map = {}, order = [];
+  const turns = [];
+  d.turns.forEach(t=>{
+    if (!t || !String(t.en||"").trim()) return;
+    const raw = String(t.speaker||"").trim();
+    if (!(raw in map)){
+      let clean = raw.replace(/[^A-Za-z0-9 .'\-]/g,"").trim();
+      if (!/^[A-Za-z]/.test(clean)) clean = "";
+      map[raw] = clean || ("ABCD"[order.length] || "X");
+      order.push(raw);
+    }
+    turns.push({spk: map[raw], en: String(t.en).trim(), zh: String(t.zh||"").trim() || null});
+  });
+  const speakers = [...new Set(turns.map(t=>t.spk))];
+  if (turns.length < 2 || speakers.length < 2 || speakers.length > 4) return null;
+  return {title: String(d.title||"情境對話").trim(), turns};
+}
+const DLG_SAMPLE = {
+  title: "早餐店點餐",
+  turns: [
+    {spk:"Clerk", en:"Good morning! What can I get for you?", zh:"早安！要點什麼呢？"},
+    {spk:"Amy",   en:"Hi! Can I have a ham and egg sandwich?", zh:"嗨！我可以點一份火腿蛋三明治嗎？"},
+    {spk:"Clerk", en:"Sure. Anything to drink?", zh:"好的。要喝點什麼嗎？"},
+    {spk:"Amy",   en:"What do you have?", zh:"你們有什麼？"},
+    {spk:"Clerk", en:"We have milk tea, soy milk, and orange juice.", zh:"我們有奶茶、豆漿和柳橙汁。"},
+    {spk:"Amy",   en:"I'll have a small soy milk, please.", zh:"我要一杯小杯豆漿，謝謝。"},
+    {spk:"Clerk", en:"For here or to go?", zh:"內用還是外帶？"},
+    {spk:"Amy",   en:"To go, please. How much is it?", zh:"外帶，謝謝。多少錢？"},
+    {spk:"Clerk", en:"That's 65 dollars.", zh:"總共 65 元。"},
+    {spk:"Amy",   en:"Here you go. Thanks!", zh:"給你。謝謝！"}
+  ]
+};
+let dlgDraft = null;
+function dlgMsg(text){
+  $("dlgPreview").innerHTML = "";
+  const d = document.createElement("div");
+  d.className = "msg"; d.textContent = text;
+  $("dlgPreview").appendChild(d);
+}
+function renderDlgPreview(d){
+  const box = $("dlgPreview");
+  box.innerHTML = "";
+  const h = document.createElement("h3");
+  h.textContent = "📝 " + d.title;
+  box.appendChild(h);
+  d.turns.forEach(t=>{
+    const row = document.createElement("div");
+    row.className = "pl";
+    const b = document.createElement("b"); b.textContent = t.spk + "：";
+    row.appendChild(b);
+    row.appendChild(document.createTextNode(t.en));
+    if (t.zh){
+      const z = document.createElement("div");
+      z.className = "pz"; z.textContent = t.zh;
+      row.appendChild(z);
+    }
+    box.appendChild(row);
+  });
+  $("btnDlgUse").hidden = false;
+  $("btnDlgSave").hidden = false;
+  $("btnDlgGen").textContent = "🔄 重新生成";
+  $("btnDlgGen").classList.remove("primary");
+}
+$("btnDialog").onclick = ()=>{
+  $("dlgOverlay").classList.add("show");
+  setTimeout(()=>$("dlgTopic").focus(), 50);
+};
+$("btnDlgClose").onclick = ()=> $("dlgOverlay").classList.remove("show");
+$("btnDlgSample").onclick = ()=>{ dlgDraft = DLG_SAMPLE; renderDlgPreview(DLG_SAMPLE); };
+$("btnDlgGen").onclick = async ()=>{
+  const key = $("geminiKey").value.trim();
+  const topic = $("dlgTopic").value.trim();
+  if (!topic){ dlgMsg("請先輸入主題情境，例如「在便利商店買飲料」。"); return; }
+  if (!key){ dlgMsg("AI 生成需要 Gemini API 金鑰：請先到「⚙️ 設定」填入（可於 Google AI Studio 免費申請）。也可以先按「📄 範例對話」試用對話演練。"); return; }
+  try{ localStorage.setItem("readaloud:gemini_key", key); }catch(e){}
+  const opts = {
+    topic, level: $("dlgLevel").value, turns: parseInt($("dlgTurns").value,10),
+    roleA: $("dlgRoleA").value.trim(), roleB: $("dlgRoleB").value.trim(),
+    target: $("dlgTarget").value.trim()
+  };
+  $("btnDlgGen").disabled = true;
+  dlgMsg("✨ 正在撰寫對話…");
+  try{
+    const data = await geminiCall(key, buildDialogPrompt(opts),
+      sec=> dlgMsg(`觸及免費層頻率限制，${sec} 秒後自動重試…`),
+      {temperature: 0.9, json: true});
+    const text = (((data.candidates||[])[0]||{}).content||{}).parts?.map(p=>p.text||"").join("") || "";
+    const d = validDialog(JSON.parse(text.replace(/```json|```/g,"").trim()));
+    if (!d) throw new Error("AI 回傳的對話格式不完整，請再生成一次");
+    dlgDraft = d;
+    renderDlgPreview(d);
+  }catch(err){
+    dlgMsg("生成失敗：" + err.message);
+  }finally{
+    $("btnDlgGen").disabled = false;
+  }
+};
+$("btnDlgUse").onclick = ()=>{
+  if (!dlgDraft) return;
+  $("dlgOverlay").classList.remove("show");
+  setSource(dlgDraft.turns.map(t=>({en:t.en, zh:t.zh, spk:t.spk})), "dialog");
+  liveText.textContent = `已載入「${dlgDraft.title}」。選好你要扮演的角色，按「開始練習」！`;
+};
+/* 下載對話稿：「角色: 台詞」＋下一行中文，可再用「載入 TXT」讀回 */
+$("btnDlgSave").onclick = ()=>{
+  if (!dlgDraft) return;
+  const txt = dlgDraft.turns.map(t=> `${t.spk}: ${t.en}` + (t.zh ? `\n（${t.zh}）` : "")).join("\n");
+  const blob = new Blob(["\ufeff" + txt], {type:"text/plain;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const safe = dlgDraft.title.replace(/[\\/:*?"<>|]/g,"").slice(0,20) || "對話";
+  a.download = `對話稿_${safe}_${todayTW()}.txt`;   // 日期 yyyy-MM-dd（Asia/Taipei）
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
 };
 </script>
 </body>
